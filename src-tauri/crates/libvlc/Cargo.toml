@@ -1,0 +1,21 @@
+[package]
+name = "libvlc"
+version.workspace = true
+edition.workspace = true
+license = "LGPL-2.1-or-later"
+description = "Safe Rust bindings for libVLC 3.x"
+readme = "README.md"
+
+[features]
+default = ["link"]
+link = ["libvlc-sys/link"]
+
+[dependencies]
+libvlc-sys = { path = "../libvlc-sys", default-features = false }
+thiserror.workspace = true
+
+[dev-dependencies]
+env_logger.workspace = true
+
+[lints]
+workspace = true

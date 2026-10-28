@@ -1,0 +1,19 @@
+[package]
+name = "settings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Application preferences persisted in SQLite"
+
+[dependencies]
+rusqlite.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+log.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

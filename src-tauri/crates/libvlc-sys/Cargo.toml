@@ -1,0 +1,18 @@
+[package]
+name = "libvlc-sys"
+version.workspace = true
+edition.workspace = true
+license = "LGPL-2.1-or-later"
+description = "Low-level FFI bindings to libVLC 3.x"
+readme = "README.md"
+
+[features]
+default = ["link"]
+# Link against a system / bundled libVLC. Disable for compile-only CI without libs.
+link = []
+
+[dependencies]
+libc.workspace = true
+
+[lints]
+workspace = true

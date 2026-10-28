@@ -1,0 +1,20 @@
+[package]
+name = "library"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Local media library: scan, playlists, SQLite persistence"
+
+[dependencies]
+rusqlite.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+walkdir.workspace = true
+log.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

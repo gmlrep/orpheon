@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: Test & build (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Typecheck frontend
+        run: npx vue-tsc --noEmit
+
+      - name: Prepare vendored libVLC
+        shell: pwsh
+        run: .\scripts\ci-prepare-vlc.ps1
+
+      - name: Cargo test (workspace)
+        working-directory: src-tauri
+        run: cargo test --workspace --features vlc
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build Tauri (Windows release)
+        run: npm run tauri:build
+
+      - name: Bundle portable Windows package
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Recurse src-tauri\target\release\Orpheon.exe |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $exe) { throw "Orpheon.exe not found" }
+          .\scripts\bundle-libvlc.ps1 -OutDir dist\win -ExeSource $exe
+          Get-ChildItem dist\win | Format-Table Name, Length
+
+      - name: Upload Windows build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: orpheon-windows
+          path: |
+            dist/win/**
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: warn
