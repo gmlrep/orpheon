@@ -24,18 +24,8 @@ pub fn list_media(
 ) -> Result<Vec<MediaItem>, String> {
     let db = state.library.lock().map_err(|_| "library lock".to_string())?;
     let mt = media_type.as_deref().map(MediaType::parse);
-    let mut items = db
-        .list_media_limited(mt, limit)
-        .map_err(|e| e.to_string())?;
-    if let Some(q) = query {
-        let q = q.trim().to_lowercase();
-        if !q.is_empty() {
-            items.retain(|m| {
-                m.title.to_lowercase().contains(&q) || m.path.to_lowercase().contains(&q)
-            });
-        }
-    }
-    Ok(items)
+    db.list_media_filtered(mt, query.as_deref(), limit)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

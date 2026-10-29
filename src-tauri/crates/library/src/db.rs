@@ -191,7 +191,7 @@ impl LibraryDb {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)
              ON CONFLICT(path) DO UPDATE SET
                title=excluded.title,
-               duration_ms=excluded.duration_ms,
+               duration_ms=COALESCE(excluded.duration_ms, media_items.duration_ms),
                media_type=excluded.media_type,
                mtime=excluded.mtime",
             params![path, title, duration_ms, media_type.as_str(), mtime, now],
@@ -324,9 +324,56 @@ impl LibraryDb {
         media_type: Option<MediaType>,
         limit: Option<i64>,
     ) -> Result<Vec<MediaItem>> {
+        self.list_media_filtered(media_type, None, limit)
+    }
+
+    /// List media with optional type, case-insensitive title/path substring, and limit.
+    ///
+    /// Filtering runs in SQLite so large libraries are not fully loaded into Rust
+    /// just to apply a search string.
+    ///
+    /// # Errors
+    /// Returns [`LibraryError::Db`].
+    pub fn list_media_filtered(
+        &self,
+        media_type: Option<MediaType>,
+        query: Option<&str>,
+        limit: Option<i64>,
+    ) -> Result<Vec<MediaItem>> {
+        let q = query
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| format!("%{}%", s.to_lowercase()));
         let mut out = Vec::new();
-        if let Some(mt) = media_type {
-            if let Some(lim) = limit {
+
+        match (media_type, q.as_deref(), limit) {
+            (Some(mt), Some(like), Some(lim)) => {
+                let mut stmt = self.conn.prepare(
+                    "SELECT id, path, title, duration_ms, media_type, mtime, artwork_path
+                     FROM media_items
+                     WHERE media_type = ?1
+                       AND (lower(title) LIKE ?2 OR lower(path) LIKE ?2)
+                     ORDER BY title COLLATE NOCASE LIMIT ?3",
+                )?;
+                let rows = stmt.query_map(params![mt.as_str(), like, lim], map_media_row)?;
+                for row in rows {
+                    out.push(row?);
+                }
+            }
+            (Some(mt), Some(like), None) => {
+                let mut stmt = self.conn.prepare(
+                    "SELECT id, path, title, duration_ms, media_type, mtime, artwork_path
+                     FROM media_items
+                     WHERE media_type = ?1
+                       AND (lower(title) LIKE ?2 OR lower(path) LIKE ?2)
+                     ORDER BY title COLLATE NOCASE",
+                )?;
+                let rows = stmt.query_map(params![mt.as_str(), like], map_media_row)?;
+                for row in rows {
+                    out.push(row?);
+                }
+            }
+            (Some(mt), None, Some(lim)) => {
                 let mut stmt = self.conn.prepare(
                     "SELECT id, path, title, duration_ms, media_type, mtime, artwork_path
                      FROM media_items WHERE media_type = ?1 ORDER BY title COLLATE NOCASE LIMIT ?2",
@@ -335,7 +382,8 @@ impl LibraryDb {
                 for row in rows {
                     out.push(row?);
                 }
-            } else {
+            }
+            (Some(mt), None, None) => {
                 let mut stmt = self.conn.prepare(
                     "SELECT id, path, title, duration_ms, media_type, mtime, artwork_path
                      FROM media_items WHERE media_type = ?1 ORDER BY title COLLATE NOCASE",
@@ -345,23 +393,49 @@ impl LibraryDb {
                     out.push(row?);
                 }
             }
-        } else if let Some(lim) = limit {
-            let mut stmt = self.conn.prepare(
-                "SELECT id, path, title, duration_ms, media_type, mtime, artwork_path
-                 FROM media_items ORDER BY title COLLATE NOCASE LIMIT ?1",
-            )?;
-            let rows = stmt.query_map(params![lim], map_media_row)?;
-            for row in rows {
-                out.push(row?);
+            (None, Some(like), Some(lim)) => {
+                let mut stmt = self.conn.prepare(
+                    "SELECT id, path, title, duration_ms, media_type, mtime, artwork_path
+                     FROM media_items
+                     WHERE lower(title) LIKE ?1 OR lower(path) LIKE ?1
+                     ORDER BY title COLLATE NOCASE LIMIT ?2",
+                )?;
+                let rows = stmt.query_map(params![like, lim], map_media_row)?;
+                for row in rows {
+                    out.push(row?);
+                }
             }
-        } else {
-            let mut stmt = self.conn.prepare(
-                "SELECT id, path, title, duration_ms, media_type, mtime, artwork_path
-                 FROM media_items ORDER BY title COLLATE NOCASE",
-            )?;
-            let rows = stmt.query_map([], map_media_row)?;
-            for row in rows {
-                out.push(row?);
+            (None, Some(like), None) => {
+                let mut stmt = self.conn.prepare(
+                    "SELECT id, path, title, duration_ms, media_type, mtime, artwork_path
+                     FROM media_items
+                     WHERE lower(title) LIKE ?1 OR lower(path) LIKE ?1
+                     ORDER BY title COLLATE NOCASE",
+                )?;
+                let rows = stmt.query_map(params![like], map_media_row)?;
+                for row in rows {
+                    out.push(row?);
+                }
+            }
+            (None, None, Some(lim)) => {
+                let mut stmt = self.conn.prepare(
+                    "SELECT id, path, title, duration_ms, media_type, mtime, artwork_path
+                     FROM media_items ORDER BY title COLLATE NOCASE LIMIT ?1",
+                )?;
+                let rows = stmt.query_map(params![lim], map_media_row)?;
+                for row in rows {
+                    out.push(row?);
+                }
+            }
+            (None, None, None) => {
+                let mut stmt = self.conn.prepare(
+                    "SELECT id, path, title, duration_ms, media_type, mtime, artwork_path
+                     FROM media_items ORDER BY title COLLATE NOCASE",
+                )?;
+                let rows = stmt.query_map([], map_media_row)?;
+                for row in rows {
+                    out.push(row?);
+                }
             }
         }
         Ok(out)

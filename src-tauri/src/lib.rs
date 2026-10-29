@@ -3,10 +3,13 @@
 mod artwork;
 mod commands;
 mod constants;
+mod mrl;
 mod player_handle;
 mod poller;
-mod state;
 mod pref_units;
+mod process_util;
+mod state;
+mod time_util;
 
 #[cfg(feature = "vlc")]
 mod player_service;

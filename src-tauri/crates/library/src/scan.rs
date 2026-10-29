@@ -13,7 +13,7 @@ const VIDEO_EXT: &[&str] = &[
 const AUDIO_EXT: &[&str] = &[
     "mp3", "flac", "wav", "aac", "ogg", "m4a", "opus", "wma", "aiff",
 ];
-const BATCH_COMMIT_EVERY: usize = 64;
+const BATCH_COMMIT_EVERY: usize = 256;
 
 /// Whether `ext` (without dot) is a known media extension.
 #[must_use]
@@ -103,8 +103,9 @@ pub fn scan_root(db: &LibraryDb, root: &Path, kind: &str) -> Result<usize> {
                 .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
                 .map(|d| d.as_secs() as i64);
             let path_str = path.to_string_lossy();
-            let duration_ms = probe_duration_ms(path);
-            db.upsert_media(&path_str, &title, media_type, mtime, duration_ms)?;
+            // Skip per-file ffprobe during scan — it dominates wall time and flashes
+            // consoles on Windows. Duration is filled later from the playback engine.
+            db.upsert_media(&path_str, &title, media_type, mtime, None)?;
             count += 1;
             batch += 1;
             if batch >= BATCH_COMMIT_EVERY {
@@ -126,31 +127,6 @@ pub fn scan_root(db: &LibraryDb, root: &Path, kind: &str) -> Result<usize> {
             Err(e)
         }
     }
-}
-
-/// Best-effort duration via ffprobe when available (scan stays fast if missing).
-fn probe_duration_ms(path: &Path) -> Option<i64> {
-    let output = std::process::Command::new("ffprobe")
-        .args([
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-        ])
-        .arg(path)
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&output.stdout);
-    let secs: f64 = text.trim().parse().ok()?;
-    if !secs.is_finite() || secs <= 0.0 {
-        return None;
-    }
-    Some((secs * 1000.0).round() as i64)
 }
 
 #[cfg(test)]

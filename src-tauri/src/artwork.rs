@@ -2,13 +2,17 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::sync::OnceLock;
 
 use crate::constants::{
     ARTWORK_FFMPEG_SEEK_SECS, ARTWORK_LARGE_FILE_BYTES, ARTWORK_MIN_BYTES,
     ARTWORK_VLC_START_LARGE, ARTWORK_VLC_START_SMALL,
 };
+use crate::process_util;
 use log::debug;
+
+/// DB / FE sentinel: generation was attempted and produced nothing (skip retries).
+pub const NO_ARTWORK_SENTINEL: &str = ":none";
 
 /// Resolve or generate a thumbnail for `media_path` under `cache_dir`.
 pub fn ensure_artwork(media_path: &Path, cache_dir: &Path, media_id: i64) -> Option<PathBuf> {
@@ -93,46 +97,60 @@ fn find_sidecar_cover(media_path: &Path) -> Option<PathBuf> {
     None
 }
 
-fn find_ffmpeg() -> Option<PathBuf> {
-    if let Ok(output) = Command::new("where").arg("ffmpeg").output() {
-        if output.status.success() {
-            let text = String::from_utf8_lossy(&output.stdout);
-            let first = text.lines().next().unwrap_or("").trim();
-            let p = PathBuf::from(first);
-            if p.is_file() {
-                return Some(p);
+fn find_ffmpeg() -> Option<&'static Path> {
+    static FFMPEG: OnceLock<Option<PathBuf>> = OnceLock::new();
+    FFMPEG
+        .get_or_init(|| {
+            // Resolve once via `where` (CREATE_NO_WINDOW) — avoids PATH lookup per file.
+            if let Ok(output) = process_util::command("where.exe")
+                .arg("ffmpeg")
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .output()
+            {
+                if output.status.success() {
+                    let text = String::from_utf8_lossy(&output.stdout);
+                    let first = text.lines().next().unwrap_or("").trim();
+                    let p = PathBuf::from(first);
+                    if p.is_file() {
+                        return Some(p);
+                    }
+                }
             }
-        }
-    }
-    None
+            // Last resort: bare name (CreateProcess PATH search). Cached either way.
+            Some(PathBuf::from("ffmpeg"))
+        })
+        .as_deref()
 }
 
-fn find_vlc_exe() -> Option<PathBuf> {
-    let mut candidates = Vec::new();
-    // Vendored / next-to-exe copies (build.rs puts DLLs here; some installs also ship vlc.exe).
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            candidates.push(dir.join("vlc.exe"));
+fn find_vlc_exe() -> Option<&'static Path> {
+    static VLC: OnceLock<Option<PathBuf>> = OnceLock::new();
+    VLC.get_or_init(|| {
+        let mut candidates = Vec::new();
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent() {
+                candidates.push(dir.join("vlc.exe"));
+            }
         }
-    }
-    candidates.push(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../vendor/vlc/vlc.exe"),
-    );
-    if let Ok(pf) = std::env::var("ProgramFiles") {
-        candidates.push(PathBuf::from(pf).join("VideoLAN").join("VLC").join("vlc.exe"));
-    }
-    if let Ok(pf86) = std::env::var("ProgramFiles(x86)") {
-        candidates.push(PathBuf::from(pf86).join("VideoLAN").join("VLC").join("vlc.exe"));
-    }
-    candidates.into_iter().find(|p| p.is_file())
+        candidates.push(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../vendor/vlc/vlc.exe"),
+        );
+        if let Ok(pf) = std::env::var("ProgramFiles") {
+            candidates.push(PathBuf::from(pf).join("VideoLAN").join("VLC").join("vlc.exe"));
+        }
+        if let Ok(pf86) = std::env::var("ProgramFiles(x86)") {
+            candidates.push(PathBuf::from(pf86).join("VideoLAN").join("VLC").join("vlc.exe"));
+        }
+        candidates.into_iter().find(|p| p.is_file())
+    })
+    .as_deref()
 }
 
 fn try_ffmpeg_frame(media_path: &Path, out_jpg: &Path) -> bool {
     let Some(ffmpeg) = find_ffmpeg() else {
         return false;
     };
-    let status = Command::new(&ffmpeg)
+    let status = process_util::command(ffmpeg)
         .args([
             "-hide_banner",
             "-loglevel",
@@ -144,6 +162,8 @@ fn try_ffmpeg_frame(media_path: &Path, out_jpg: &Path) -> bool {
         .arg(media_path)
         .args(["-frames:v", "1", "-q:v", "4", "-y"])
         .arg(out_jpg)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status();
     matches!(status, Ok(s) if s.success() && out_jpg.is_file() && file_nonempty(out_jpg))
 }
@@ -153,11 +173,13 @@ fn try_ffmpeg_embedded_cover(media_path: &Path, out: &Path) -> bool {
     let Some(ffmpeg) = find_ffmpeg() else {
         return false;
     };
-    let status = Command::new(&ffmpeg)
+    let status = process_util::command(ffmpeg)
         .args(["-hide_banner", "-loglevel", "error", "-i"])
         .arg(media_path)
         .args(["-an", "-vcodec", "copy", "-y"])
         .arg(out)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status();
     matches!(status, Ok(s) if s.success() && out.is_file() && file_nonempty(out))
 }
@@ -178,9 +200,6 @@ fn try_vlc_cli_frame(media_path: &Path, cache_dir: &Path, media_id: i64) -> bool
     if fs::create_dir_all(&scene_dir).is_err() {
         return false;
     }
-    // Note: `--vout=dummy` prevents the scene filter from writing frames.
-    // Prefer `--run-time` over `--stop-time` (more reliable with -I dummy).
-    // Longer files often start on black/title cards — sample further in.
     let start = if media_path
         .metadata()
         .map(|m| m.len() > ARTWORK_LARGE_FILE_BYTES)
@@ -190,7 +209,7 @@ fn try_vlc_cli_frame(media_path: &Path, cache_dir: &Path, media_id: i64) -> bool
     } else {
         ARTWORK_VLC_START_SMALL
     };
-    let status = Command::new(&vlc)
+    let status = process_util::command(vlc)
         .args([
             "-I",
             "dummy",
@@ -211,9 +230,10 @@ fn try_vlc_cli_frame(media_path: &Path, cache_dir: &Path, media_id: i64) -> bool
         .arg(format!("--scene-path={}", scene_dir.display()))
         .arg(media_path)
         .arg("vlc://quit")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status();
     let _ = status;
-    // Prefer the last (usually sharpest mid-run) scene frame.
     let mut found: Option<PathBuf> = None;
     if let Ok(rd) = fs::read_dir(&scene_dir) {
         let mut jpgs: Vec<PathBuf> = rd

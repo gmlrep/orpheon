@@ -24,6 +24,8 @@ const {
 
 const src = shallowRef<string | null>(null);
 const failed = shallowRef(false);
+/** Session-local negative cache so remounts do not re-invoke while list data is stale. */
+const noArt = shallowRef(false);
 const palette = computed(() => toneFor(seed ?? title));
 
 function toSrc(filePath: string): string {
@@ -33,6 +35,11 @@ function toSrc(filePath: string): string {
 async function load() {
   failed.value = false;
   // Prefer DB/cached art immediately — never block the grid on ffmpeg/VLC generate.
+  // ":none" = backend already tried and found nothing (skip re-spawn).
+  if (artworkPath === ":none" || noArt.value) {
+    src.value = null;
+    return;
+  }
   if (artworkPath) {
     src.value = toSrc(artworkPath);
     return;
@@ -47,13 +54,20 @@ async function load() {
       }),
     );
     if (art) src.value = toSrc(art);
+    else noArt.value = true;
   } catch {
-    /* keep placeholder */
+    noArt.value = true;
   }
 }
 
 onMounted(load);
-watch(() => [path, artworkPath, mediaId], load);
+watch(
+  () => [path, artworkPath, mediaId] as const,
+  () => {
+    noArt.value = false;
+    void load();
+  },
+);
 </script>
 
 <template>
