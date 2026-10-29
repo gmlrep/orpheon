@@ -90,6 +90,12 @@ export default {
     title: "Сетевой поток",
     placeholder: "https://…",
     open: "Открыть",
+    save: "Сохранить",
+    saved: "Сохранено",
+    savedList: "Сохранённые потоки",
+    emptySaved: "Пока нет сохранённых потоков.",
+    remove: "Удалить поток",
+    live: "Прямой эфир",
   },
   settings: {
     title: "Настройки",

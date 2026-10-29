@@ -9,7 +9,7 @@ mod typed;
 
 pub use error::SettingsError;
 pub use prefs::{cycle_pref_str, pref_options, Prefs};
-pub use store::{AppSettings, SettingsStore, ThemePreference};
+pub use store::{AppSettings, SavedStream, SettingsStore, ThemePreference};
 pub use typed::{ContinueMode, DeinterlaceMode, HwAccelModePref, ResizeToVideo};
 
 /// Crate result alias.

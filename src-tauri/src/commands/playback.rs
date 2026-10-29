@@ -112,6 +112,7 @@ pub fn play_path(
             time_ms: 0,
             length_ms: 0,
             volume,
+            artwork_url: None,
         };
         if let Ok(mut s) = state.session.lock() {
             *s = session.clone();
@@ -126,14 +127,27 @@ pub fn play_path(
 }
 
 #[tauri::command]
-pub fn play_mrl(state: State<'_, AppState>, mrl: String) -> Result<SessionInfo, String> {
+pub fn play_mrl(
+    state: State<'_, AppState>,
+    mrl: String,
+    title: Option<String>,
+) -> Result<SessionInfo, String> {
     #[cfg(feature = "vlc")]
     {
         let looks_video = !mrl.to_ascii_lowercase().contains("audio")
             && !mrl.to_ascii_lowercase().ends_with(".mp3")
             && !mrl.to_ascii_lowercase().ends_with(".flac")
-            && !mrl.to_ascii_lowercase().ends_with(".m4a");
+            && !mrl.to_ascii_lowercase().ends_with(".m4a")
+            && !mrl.to_ascii_lowercase().ends_with(".aac")
+            && !mrl.to_ascii_lowercase().contains("radio");
         rebind_hwnd_if_needed(&state, looks_video);
+
+        let saved = state
+            .settings
+            .lock()
+            .ok()
+            .and_then(|store| store.load_saved_streams().ok())
+            .and_then(|list| list.into_iter().find(|s| s.mrl == mrl));
 
         let settings = state.load_settings();
         state
@@ -151,10 +165,17 @@ pub fn play_mrl(state: State<'_, AppState>, mrl: String) -> Result<SessionInfo, 
             *pending = None;
         }
 
+        let display = title
+            .filter(|t| !t.trim().is_empty())
+            .or_else(|| saved.as_ref().map(|s| s.title.clone()))
+            .filter(|t| !t.trim().is_empty())
+            .unwrap_or_else(|| mrl.clone());
+        let artwork_url = saved.as_ref().and_then(|s| s.artwork_url.clone());
+
         let session = SessionInfo {
             active: true,
             paused: false,
-            title: mrl.clone(),
+            title: display,
             subtitle: "Network stream".into(),
             path: mrl,
             media_id: None,
@@ -163,6 +184,7 @@ pub fn play_mrl(state: State<'_, AppState>, mrl: String) -> Result<SessionInfo, 
             time_ms: 0,
             length_ms: 0,
             volume,
+            artwork_url,
         };
         if let Ok(mut s) = state.session.lock() {
             *s = session.clone();
@@ -171,7 +193,7 @@ pub fn play_mrl(state: State<'_, AppState>, mrl: String) -> Result<SessionInfo, 
     }
     #[cfg(not(feature = "vlc"))]
     {
-        let _ = (state, mrl);
+        let _ = (state, mrl, title);
         Err("Built without libVLC (vlc feature disabled)".into())
     }
 }

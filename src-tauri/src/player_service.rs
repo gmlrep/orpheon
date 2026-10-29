@@ -193,6 +193,12 @@ impl PlayerService {
         self.player.is_playing()
     }
 
+    /// Metadata for the current media (title / now-playing / artwork).
+    #[must_use]
+    pub fn media_meta(&self) -> libvlc::MediaMetaSnapshot {
+        self.player.media_meta()
+    }
+
     /// Relative position 0..=1.
     #[must_use]
     pub fn position(&self) -> f32 {

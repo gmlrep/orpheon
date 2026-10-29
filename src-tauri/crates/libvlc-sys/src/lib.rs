@@ -399,6 +399,53 @@ extern "C" {
     pub fn libvlc_clearerr();
     /// Free a string allocated by libVLC.
     pub fn libvlc_free(ptr: *mut c_void);
+    /// Media currently attached to the player (caller must `libvlc_media_release`).
+    pub fn libvlc_media_player_get_media(
+        player: *mut libvlc_media_player_t,
+    ) -> *mut libvlc_media_t;
+    /// Read a metadata field (caller must `libvlc_free` the returned string).
+    pub fn libvlc_media_get_meta(
+        media: *mut libvlc_media_t,
+        e_meta: libvlc_meta_t,
+    ) -> *mut c_char;
+}
+
+/// libVLC media metadata keys (subset used by Orpheon).
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum libvlc_meta_t {
+    /// Title.
+    Title = 0,
+    /// Artist.
+    Artist = 1,
+    /// Genre.
+    Genre = 2,
+    /// Copyright.
+    Copyright = 3,
+    /// Album.
+    Album = 4,
+    /// Track number.
+    TrackNumber = 5,
+    /// Description.
+    Description = 6,
+    /// Rating.
+    Rating = 7,
+    /// Date.
+    Date = 8,
+    /// Setting.
+    Setting = 9,
+    /// URL.
+    URL = 10,
+    /// Language.
+    Language = 11,
+    /// Now playing (ICY / radio).
+    NowPlaying = 12,
+    /// Publisher.
+    Publisher = 13,
+    /// Encoded by.
+    EncodedBy = 14,
+    /// Artwork URL.
+    ArtworkURL = 15,
 }
 
 #[cfg(not(feature = "link"))]
@@ -869,6 +916,19 @@ mod stubs {
     pub unsafe extern "C" fn libvlc_clearerr() {}
     /// Stub.
     pub unsafe extern "C" fn libvlc_free(_ptr: *mut c_void) {}
+    /// Stub.
+    pub unsafe extern "C" fn libvlc_media_player_get_media(
+        _player: *mut libvlc_media_player_t,
+    ) -> *mut libvlc_media_t {
+        std::ptr::null_mut()
+    }
+    /// Stub.
+    pub unsafe extern "C" fn libvlc_media_get_meta(
+        _media: *mut libvlc_media_t,
+        _e_meta: libvlc_meta_t,
+    ) -> *mut c_char {
+        std::ptr::null_mut()
+    }
 }
 
 #[cfg(not(feature = "link"))]

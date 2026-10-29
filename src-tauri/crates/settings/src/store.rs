@@ -9,6 +9,8 @@ use std::path::Path;
 
 const RESUME_KEY: &str = "resume_positions";
 const RESUME_CAP: usize = 200;
+const SAVED_STREAMS_KEY: &str = "saved_streams";
+const SAVED_STREAMS_CAP: usize = 100;
 
 const INIT_SQL: &str = r"
 CREATE TABLE IF NOT EXISTS settings (
@@ -194,6 +196,51 @@ impl SettingsStore {
         let json = serde_json::to_string(&entries)?;
         self.set_raw(RESUME_KEY, &json)
     }
+
+    /// Load saved network streams (newest first).
+    ///
+    /// # Errors
+    /// Returns [`SettingsError`] on DB/JSON failure.
+    pub fn load_saved_streams(&self) -> Result<Vec<SavedStream>> {
+        let Some(json) = self.get_raw(SAVED_STREAMS_KEY)? else {
+            return Ok(Vec::new());
+        };
+        Ok(serde_json::from_str(&json).unwrap_or_default())
+    }
+
+    /// Persist saved network streams (newest first, capped).
+    ///
+    /// # Errors
+    /// Returns [`SettingsError`] on DB/JSON failure.
+    pub fn save_saved_streams(&self, streams: &[SavedStream]) -> Result<()> {
+        let mut list = streams.to_vec();
+        list.truncate(SAVED_STREAMS_CAP);
+        let json = serde_json::to_string(&list)?;
+        self.set_raw(SAVED_STREAMS_KEY, &json)
+    }
+
+    /// Insert or update a saved stream (moves to front).
+    ///
+    /// # Errors
+    /// Returns [`SettingsError`] on DB/JSON failure.
+    pub fn upsert_saved_stream(&self, stream: SavedStream) -> Result<Vec<SavedStream>> {
+        let mut list = self.load_saved_streams()?;
+        list.retain(|s| s.mrl != stream.mrl);
+        list.insert(0, stream);
+        self.save_saved_streams(&list)?;
+        Ok(list)
+    }
+
+    /// Remove a saved stream by MRL.
+    ///
+    /// # Errors
+    /// Returns [`SettingsError`] on DB/JSON failure.
+    pub fn remove_saved_stream(&self, mrl: &str) -> Result<Vec<SavedStream>> {
+        let mut list = self.load_saved_streams()?;
+        list.retain(|s| s.mrl != mrl);
+        self.save_saved_streams(&list)?;
+        Ok(list)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -201,6 +248,21 @@ struct ResumeEntry {
     path: String,
     position: f32,
     time_ms: i64,
+}
+
+/// A bookmarked network stream (MRL + optional display metadata).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedStream {
+    /// Stream URL / MRL.
+    pub mrl: String,
+    /// Display title (user label or discovered meta).
+    pub title: String,
+    /// Optional cover / station artwork URL or local path.
+    #[serde(default)]
+    pub artwork_url: Option<String>,
+    /// Unix epoch seconds when saved / last updated.
+    pub saved_at: i64,
 }
 
 #[cfg(test)]
@@ -227,5 +289,33 @@ mod tests {
         store.save_resume_positions(&map).expect("save");
         let loaded = store.load_resume_positions().expect("load");
         assert_eq!(loaded.get("/a.mkv").copied(), Some((0.42, 12_000)));
+    }
+
+    #[test]
+    fn saved_streams_should_upsert_and_remove() {
+        let store = SettingsStore::open_in_memory().expect("open");
+        let list = store
+            .upsert_saved_stream(SavedStream {
+                mrl: "https://example.com/a.m3u8".into(),
+                title: "A".into(),
+                artwork_url: None,
+                saved_at: 1,
+            })
+            .expect("upsert");
+        assert_eq!(list.len(), 1);
+        let list = store
+            .upsert_saved_stream(SavedStream {
+                mrl: "https://example.com/a.m3u8".into(),
+                title: "A2".into(),
+                artwork_url: Some("https://img/a.png".into()),
+                saved_at: 2,
+            })
+            .expect("update");
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].title, "A2");
+        let list = store
+            .remove_saved_stream("https://example.com/a.m3u8")
+            .expect("remove");
+        assert!(list.is_empty());
     }
 }

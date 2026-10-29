@@ -90,6 +90,12 @@ export default {
     title: "Network stream",
     placeholder: "https://…",
     open: "Open",
+    save: "Save",
+    saved: "Saved",
+    savedList: "Saved streams",
+    emptySaved: "No saved streams yet.",
+    remove: "Remove stream",
+    live: "Live stream",
   },
   settings: {
     title: "Settings",

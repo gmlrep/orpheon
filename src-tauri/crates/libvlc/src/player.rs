@@ -7,6 +7,36 @@ use std::os::raw::{c_char, c_uint, c_void};
 use std::ptr;
 use std::sync::Arc;
 
+/// Common metadata fields read from the current media.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MediaMetaSnapshot {
+    /// Track / stream title.
+    pub title: Option<String>,
+    /// Artist / station name.
+    pub artist: Option<String>,
+    /// ICY / live “now playing” line.
+    pub now_playing: Option<String>,
+    /// Cover art URL (`http(s)://` or `file://`).
+    pub artwork_url: Option<String>,
+}
+
+fn read_meta(media: *mut libvlc_sys::libvlc_media_t, key: libvlc_sys::libvlc_meta_t) -> Option<String> {
+    let ptr = unsafe { libvlc_sys::libvlc_media_get_meta(media, key) };
+    if ptr.is_null() {
+        return None;
+    }
+    let s = unsafe { std::ffi::CStr::from_ptr(ptr) }
+        .to_string_lossy()
+        .trim()
+        .to_owned();
+    unsafe { libvlc_sys::libvlc_free(ptr.cast()) };
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
 /// A media player bound to an [`Instance`].
 pub struct MediaPlayer {
     raw: *mut libvlc_sys::libvlc_media_player_t,
@@ -316,6 +346,23 @@ impl MediaPlayer {
     /// Jump to chapter index.
     pub fn set_chapter(&self, index: i32) {
         unsafe { libvlc_sys::libvlc_media_player_set_chapter(self.raw, index) };
+    }
+
+    /// Snapshot of common media metadata fields (title, now-playing, art).
+    #[must_use]
+    pub fn media_meta(&self) -> MediaMetaSnapshot {
+        let media = unsafe { libvlc_sys::libvlc_media_player_get_media(self.raw) };
+        if media.is_null() {
+            return MediaMetaSnapshot::default();
+        }
+        let snap = MediaMetaSnapshot {
+            title: read_meta(media, libvlc_sys::libvlc_meta_t::Title),
+            artist: read_meta(media, libvlc_sys::libvlc_meta_t::Artist),
+            now_playing: read_meta(media, libvlc_sys::libvlc_meta_t::NowPlaying),
+            artwork_url: read_meta(media, libvlc_sys::libvlc_meta_t::ArtworkURL),
+        };
+        unsafe { libvlc_sys::libvlc_media_release(media) };
+        snap
     }
 
     /// Current audio output device id (empty = system default).

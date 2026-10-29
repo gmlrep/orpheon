@@ -23,6 +23,15 @@ export interface SessionInfo {
   timeMs: number;
   lengthMs: number;
   volume: number;
+  /** Cover / station art (`http(s)://`, `file://`, or local path). */
+  artworkUrl?: string | null;
+}
+
+export interface SavedStream {
+  mrl: string;
+  title: string;
+  artworkUrl?: string | null;
+  savedAt: number;
 }
 
 export interface MediaItem {

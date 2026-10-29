@@ -7,6 +7,59 @@ use crate::constants::{
 use crate::state::{AppState, PlaybackTick};
 use tauri::{AppHandle, Emitter, Manager};
 
+#[cfg(feature = "vlc")]
+fn apply_stream_meta(
+    session: &mut crate::state::SessionInfo,
+    meta: &libvlc::MediaMetaSnapshot,
+    state: &AppState,
+) {
+    let looks_network = session.path.contains("://");
+    if !looks_network {
+        return;
+    }
+
+    let mut changed = false;
+    let display = meta
+        .now_playing
+        .clone()
+        .or_else(|| meta.title.clone())
+        .filter(|t| !t.is_empty());
+    if let Some(title) = display {
+        // Prefer live now-playing; otherwise upgrade placeholder URL titles.
+        if meta.now_playing.is_some()
+            || session.title == session.path
+            || session.title.is_empty()
+            || session.title == "Network stream"
+        {
+            if session.title != title {
+                session.title = title;
+                changed = true;
+            }
+        }
+    }
+    if let Some(artist) = meta.artist.clone().filter(|a| !a.is_empty()) {
+        if session.subtitle != artist {
+            session.subtitle = artist;
+            changed = true;
+        }
+    }
+    if let Some(art) = meta.artwork_url.clone().filter(|a| !a.is_empty()) {
+        if session.artwork_url.as_deref() != Some(art.as_str()) {
+            session.artwork_url = Some(art);
+            changed = true;
+        }
+    }
+
+    if changed {
+        crate::commands::streams::enrich_saved_stream_meta(
+            state,
+            &session.path,
+            &session.title,
+            session.artwork_url.as_deref(),
+        );
+    }
+}
+
 /// Spawn a background thread that emits `playback://tick` events.
 pub fn start_playback_poller(app: AppHandle) {
     std::thread::Builder::new()
@@ -67,12 +120,17 @@ fn poll_loop(app: AppHandle) {
                     && (position >= END_POSITION_THRESHOLD
                         || time_ms + END_TIME_SLACK_MS >= length_ms);
 
+                // Pull ICY / stream metadata when libVLC exposes it.
+                let meta = state.player.with(|p| p.media_meta());
                 if let Ok(mut s) = state.session.lock() {
                     if s.active {
                         s.paused = !playing;
                         s.position = position;
                         s.time_ms = time_ms;
                         s.length_ms = length_ms;
+                        if let Some(meta) = meta {
+                            apply_stream_meta(&mut s, &meta, &state);
+                        }
                         let tick = PlaybackTick {
                             session: s.clone(),
                             playing,

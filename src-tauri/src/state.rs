@@ -25,6 +25,9 @@ pub struct SessionInfo {
     pub time_ms: i64,
     pub length_ms: i64,
     pub volume: i32,
+    /// Cover / station art (`http(s)://`, `file://`, or local path).
+    #[serde(default)]
+    pub artwork_url: Option<String>,
 }
 
 /// Playback tick payload emitted to the frontend.

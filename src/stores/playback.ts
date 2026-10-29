@@ -29,7 +29,13 @@ const emptySession = (): SessionInfo => ({
   timeMs: 0,
   lengthMs: 0,
   volume: DEFAULT_VOLUME,
+  artworkUrl: null,
 });
+
+function applySessionArt(session: SessionInfo) {
+  if (session.artworkUrl) return session.artworkUrl;
+  return null;
+}
 
 async function tearDownVideoSurface() {
   await invoke("hide_video_surface");
@@ -114,6 +120,8 @@ export const usePlaybackStore = defineStore("playback", () => {
           session.value = next;
         }
         playing.value = ev.payload.playing;
+        const art = applySessionArt(session.value);
+        if (art) coverPath.value = art;
         if (!muted.value) {
           /* keep mute flag when volume is intentionally 0 */
         } else if (next.volume > 0) {
@@ -256,21 +264,29 @@ export const usePlaybackStore = defineStore("playback", () => {
     await playQueueItem(0, { expandVideo: true });
   }
 
-  async function playMrl(mrl: string) {
+  async function playMrl(mrl: string, opts?: { title?: string; artworkUrl?: string | null }) {
     const ui = useUiStore();
     queue.value = [];
     queueIndex.value = -1;
-    coverPath.value = null;
+    coverPath.value = opts?.artworkUrl ?? null;
     try {
       await ensureSurfaceForVideo(true);
     } catch (e) {
       console.error("ensure_video_surface failed", e);
     }
-    const next = await invoke<SessionInfo>("play_mrl", { mrl });
+    const next = await invoke<SessionInfo>("play_mrl", {
+      mrl,
+      title: opts?.title ?? null,
+    });
     session.value = next;
     playing.value = true;
     muted.value = next.volume <= 0;
+    coverPath.value = applySessionArt(next) ?? opts?.artworkUrl ?? null;
     if (next.isVideo) ui.navigate("player");
+  }
+
+  function isCurrentMrl(mrl: string) {
+    return session.value.active && session.value.path === mrl;
   }
 
   async function playPause() {
@@ -518,6 +534,7 @@ export const usePlaybackStore = defineStore("playback", () => {
     playMediaItem,
     playResumeItem,
     playMrl,
+    isCurrentMrl,
     playPause,
     stop,
     seek,

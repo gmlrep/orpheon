@@ -14,6 +14,10 @@ const { sideToggleState, fullscreen } = storeToRefs(ui);
 <template>
   <header v-show="!fullscreen" class="topbar">
     <div class="topbar-left">
+      <span class="brand-mark" aria-hidden="true">
+        <img :src="markUrl" alt="" width="22" height="22" />
+      </span>
+      <span class="app-title">{{ t("app.name") }}</span>
       <button
         type="button"
         class="side-toggle"
@@ -38,10 +42,6 @@ const { sideToggleState, fullscreen } = storeToRefs(ui);
         </svg>
         <span class="side-toggle-rail" aria-hidden="true" />
       </button>
-      <span class="brand-mark" aria-hidden="true">
-        <img :src="markUrl" alt="" width="22" height="22" />
-      </span>
-      <span class="app-title">{{ t("app.name") }}</span>
     </div>
     <div class="topbar-center">
       <NowBar />
