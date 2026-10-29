@@ -10,7 +10,9 @@ use walkdir::WalkDir;
 const VIDEO_EXT: &[&str] = &[
     "mp4", "mkv", "avi", "mov", "webm", "wmv", "flv", "m4v", "ts", "m2ts",
 ];
-const AUDIO_EXT: &[&str] = &["mp3", "flac", "wav", "aac", "ogg", "m4a", "opus", "wma"];
+const AUDIO_EXT: &[&str] = &[
+    "mp3", "flac", "wav", "aac", "ogg", "m4a", "opus", "wma", "aiff",
+];
 const BATCH_COMMIT_EVERY: usize = 64;
 
 /// Whether `ext` (without dot) is a known media extension.

@@ -7,6 +7,9 @@ import { usePlaybackStore } from "../stores/playback";
 import { useUiStore } from "../stores/ui";
 import MediaThumb from "../components/MediaThumb.vue";
 import { formatDuration } from "../utils/format";
+import { LISTEN_AGAIN_LIMIT } from "../config/app";
+
+defineOptions({ name: "HomeView" });
 
 const { t } = useI18n();
 const library = useLibraryStore();
@@ -15,8 +18,10 @@ const ui = useUiStore();
 const { resume, recent, folders, loading } = storeToRefs(library);
 
 const listenAgain = computed(() =>
-  recent.value.filter((m) => m.media_type === "audio").slice(0, 8),
+  recent.value.filter((m) => m.media_type === "audio").slice(0, LISTEN_AGAIN_LIMIT),
 );
+
+const continueItems = computed(() => resume.value.slice(0, 3));
 
 onMounted(() => {
   void library.loadHome();
@@ -36,22 +41,15 @@ onMounted(() => {
       {{ t("home.empty") }}
     </p>
 
-    <template v-if="resume.length">
+    <template v-if="continueItems.length">
       <div class="section-label">{{ t("home.continue") }}</div>
       <div class="resume-grid">
         <button
-          v-for="item in resume.slice(0, 3)"
+          v-for="item in continueItems"
           :key="item.path"
           type="button"
           class="resume-card"
-          @click="
-            playback.playPath(item.path, {
-              title: item.title,
-              mediaId: item.id ?? undefined,
-              isVideo: item.mediaType !== 'audio',
-              artworkPath: item.artworkPath,
-            })
-          "
+          @click="playback.playResumeItem(item)"
         >
           <div class="art">
             <MediaThumb
@@ -78,14 +76,7 @@ onMounted(() => {
           v-for="item in listenAgain"
           :key="item.id"
           type="button"
-          @click="
-            playback.playPath(item.path, {
-              title: item.title,
-              mediaId: item.id,
-              isVideo: false,
-              artworkPath: item.artwork_path,
-            })
-          "
+          @click="playback.playMediaItem(item)"
         >
           <span class="thumb">
             <MediaThumb
@@ -106,7 +97,7 @@ onMounted(() => {
     </template>
 
     <template v-if="folders.length">
-      <div class="section-label" style="margin-top: 24px">{{ t("home.folders") }}</div>
+      <div class="section-label folders-label">{{ t("home.folders") }}</div>
       <div class="list-rows">
         <button
           v-for="folder in folders"
@@ -123,3 +114,9 @@ onMounted(() => {
     </template>
   </div>
 </template>
+
+<style scoped>
+.folders-label {
+  margin-top: 24px;
+}
+</style>

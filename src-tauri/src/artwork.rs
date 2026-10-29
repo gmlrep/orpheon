@@ -4,6 +4,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::constants::{
+    ARTWORK_FFMPEG_SEEK_SECS, ARTWORK_LARGE_FILE_BYTES, ARTWORK_MIN_BYTES,
+    ARTWORK_VLC_START_LARGE, ARTWORK_VLC_START_SMALL,
+};
 use log::debug;
 
 /// Resolve or generate a thumbnail for `media_path` under `cache_dir`.
@@ -18,7 +22,7 @@ pub fn ensure_artwork(media_path: &Path, cache_dir: &Path, media_id: i64) -> Opt
     for candidate in [&cached_jpg, &cached_png] {
         if candidate.is_file() {
             if let Ok(meta) = candidate.metadata() {
-                if meta.len() > 32 {
+                if meta.len() > ARTWORK_MIN_BYTES {
                     return Some(candidate.clone());
                 }
             }
@@ -42,7 +46,7 @@ pub fn ensure_artwork(media_path: &Path, cache_dir: &Path, media_id: i64) -> Opt
         for candidate in [&cached_jpg, &cached_png] {
             if candidate.is_file() {
                 if let Ok(meta) = candidate.metadata() {
-                    if meta.len() > 32 {
+                    if meta.len() > ARTWORK_MIN_BYTES {
                         return Some(candidate.clone());
                     }
                 }
@@ -53,13 +57,9 @@ pub fn ensure_artwork(media_path: &Path, cache_dir: &Path, media_id: i64) -> Opt
 }
 
 fn is_audio(path: &Path) -> bool {
-    matches!(
-        path.extension()
-            .and_then(|e| e.to_str())
-            .map(|e| e.to_ascii_lowercase())
-            .as_deref(),
-        Some("mp3" | "flac" | "wav" | "aac" | "ogg" | "m4a" | "wma" | "opus" | "aiff")
-    )
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(library::is_audio_extension)
 }
 
 fn find_sidecar_cover(media_path: &Path) -> Option<PathBuf> {
@@ -133,7 +133,14 @@ fn try_ffmpeg_frame(media_path: &Path, out_jpg: &Path) -> bool {
         return false;
     };
     let status = Command::new(&ffmpeg)
-        .args(["-hide_banner", "-loglevel", "error", "-ss", "5", "-i"])
+        .args([
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            ARTWORK_FFMPEG_SEEK_SECS,
+            "-i",
+        ])
         .arg(media_path)
         .args(["-frames:v", "1", "-q:v", "4", "-y"])
         .arg(out_jpg)
@@ -156,7 +163,9 @@ fn try_ffmpeg_embedded_cover(media_path: &Path, out: &Path) -> bool {
 }
 
 fn file_nonempty(p: &Path) -> bool {
-    fs::metadata(p).map(|m| m.len() > 32).unwrap_or(false)
+    fs::metadata(p)
+        .map(|m| m.len() > ARTWORK_MIN_BYTES)
+        .unwrap_or(false)
 }
 
 fn try_vlc_cli_frame(media_path: &Path, cache_dir: &Path, media_id: i64) -> bool {
@@ -174,12 +183,12 @@ fn try_vlc_cli_frame(media_path: &Path, cache_dir: &Path, media_id: i64) -> bool
     // Longer files often start on black/title cards — sample further in.
     let start = if media_path
         .metadata()
-        .map(|m| m.len() > 80_000_000)
+        .map(|m| m.len() > ARTWORK_LARGE_FILE_BYTES)
         .unwrap_or(false)
     {
-        "--start-time=90"
+        ARTWORK_VLC_START_LARGE
     } else {
-        "--start-time=1"
+        ARTWORK_VLC_START_SMALL
     };
     let status = Command::new(&vlc)
         .args([

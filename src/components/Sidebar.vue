@@ -2,39 +2,21 @@
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
 import { useUiStore } from "../stores/ui";
-import type { RouteName } from "../types";
-import markUrl from "../assets/mark.svg";
+import { browseTabs } from "../nav";
 import AppIcon from "./AppIcon.vue";
 
 const { t } = useI18n();
 const ui = useUiStore();
 const { route } = storeToRefs(ui);
-
-const browse: { id: RouteName; icon: string; label: string }[] = [
-  { id: "home", icon: "home", label: "nav.home" },
-  { id: "videos", icon: "video", label: "nav.videos" },
-  { id: "music", icon: "music", label: "nav.music" },
-  { id: "playlists", icon: "playlist", label: "nav.playlists" },
-  { id: "recent", icon: "recent", label: "nav.recent" },
-];
 </script>
 
 <template>
   <aside class="sidebar" :aria-label="t('nav.browse')">
     <div class="sidebar-inner">
-      <div class="product">
-        <div class="logo" aria-hidden="true">
-          <img :src="markUrl" alt="" width="28" height="28" />
-        </div>
-        <div class="product-name">
-          {{ t("app.name") }}<span>{{ t("app.tagline") }}</span>
-        </div>
-      </div>
-
       <div class="nav-group">{{ t("nav.browse") }}</div>
       <nav class="nav">
         <a
-          v-for="item in browse"
+          v-for="item in browseTabs"
           :key="item.id"
           href="#"
           :aria-current="route === item.id ? 'page' : undefined"

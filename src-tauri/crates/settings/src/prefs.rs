@@ -362,6 +362,14 @@ pub struct Prefs {
     pub media_role: String,
     /// `visualizer_size` preference.
     pub visualizer_size: String,
+    /// Minimize UI animations.
+    pub reduce_motion: bool,
+    /// Accent swatch index (0-based).
+    pub accent_index: i32,
+    /// Enable equalizer filter.
+    pub equalizer_enabled: bool,
+    /// Enable compressor filter.
+    pub compressor: bool,
 }
 
 impl Default for Prefs {
@@ -544,6 +552,10 @@ impl Default for Prefs {
             resample_quality: "Balanced".into(),
             media_role: "Video".into(),
             visualizer_size: "Match device".into(),
+            reduce_motion: false,
+            accent_index: 0,
+            equalizer_enabled: false,
+            compressor: false,
         }
     }
 }

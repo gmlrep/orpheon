@@ -1,24 +1,31 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, shallowRef, useTemplateRef } from "vue";
 import AppIcon from "./AppIcon.vue";
+import { DEFAULT_MAX_VOLUME } from "../config/app";
 
-const props = defineProps<{
-  value: number; // 0..200 (libVLC softvol), UI maps 0..1 of max 125 by default → use 0..100 as percent of 100
-  muted?: boolean;
-}>();
+const model = defineModel<number>({ required: true });
+const props = withDefaults(
+  defineProps<{
+    muted?: boolean;
+    /** Softvol display/input cap (100 = unity, typically 125). */
+    maxVolume?: number;
+  }>(),
+  { muted: false, maxVolume: DEFAULT_MAX_VOLUME },
+);
 const emit = defineEmits<{
-  change: [number];
   toggleMute: [];
 }>();
 
-/** Display level 0..1 from softvol 0..200 (100 = unity). Cap visual at 125%. */
+const cap = computed(() => Math.max(1, props.maxVolume));
+
+/** Display level 0..1 from softvol 0..cap. */
 const level = computed(() => {
   if (props.muted) return 0;
-  return Math.min(1, Math.max(0, props.value / 125));
+  return Math.min(1, Math.max(0, model.value / cap.value));
 });
 
-const track = ref<HTMLElement | null>(null);
-const dragging = ref(false);
+const track = useTemplateRef<HTMLElement>("track");
+const dragging = shallowRef(false);
 
 function levelFromEvent(e: PointerEvent) {
   const el = track.value;
@@ -29,8 +36,7 @@ function levelFromEvent(e: PointerEvent) {
 }
 
 function emitFromLevel(lv: number) {
-  // Map 0..1 visual → 0..125 softvol units
-  emit("change", Math.round(lv * 125));
+  model.value = Math.round(lv * cap.value);
 }
 
 function onPointerDown(e: PointerEvent) {
@@ -57,7 +63,7 @@ function onPointerUp(e: PointerEvent) {
 
 <template>
   <div class="vol">
-    <button type="button" class="icon-btn" aria-label="Mute" @click="emit('toggleMute')">
+    <button type="button" class="icon-btn" :aria-label="$t('player.mute')" @click="emit('toggleMute')">
       <AppIcon name="volume" :size="18" />
     </button>
     <div
@@ -68,7 +74,7 @@ function onPointerUp(e: PointerEvent) {
       :aria-valuenow="Math.round(level * 100)"
       :aria-valuemin="0"
       :aria-valuemax="100"
-      :aria-label="'Volume'"
+      :aria-label="$t('player.volume')"
       :style="{ '--v': level }"
       @pointerdown.prevent="onPointerDown"
       @pointermove="onPointerMove"

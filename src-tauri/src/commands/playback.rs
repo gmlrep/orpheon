@@ -1,9 +1,29 @@
 //! Playback commands.
 
+use crate::constants::{DEFAULT_VOLUME, SOFTVOL_ENGINE_MAX};
+use crate::pref_units::parse_percent;
 use crate::state::{AppState, SessionInfo};
 use serde::Serialize;
 use std::path::PathBuf;
 use tauri::State;
+
+fn max_volume_from_settings(state: &AppState) -> i32 {
+    let settings = state.load_settings();
+    let pct = parse_percent(&settings.prefs.max_volume, 125);
+    pct.clamp(1, SOFTVOL_ENGINE_MAX)
+}
+
+fn initial_volume(state: &AppState) -> i32 {
+    let settings = state.load_settings();
+    let max = parse_percent(&settings.prefs.max_volume, 125).clamp(1, SOFTVOL_ENGINE_MAX);
+    let mode = settings.prefs.startup_volume_mode.as_str();
+    let vol = if mode == "Always starts at" {
+        parse_percent(&settings.prefs.startup_volume_pct, DEFAULT_VOLUME)
+    } else {
+        settings.volume
+    };
+    vol.clamp(0, max)
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,20 +63,27 @@ pub fn play_path(
 
         rebind_hwnd_if_needed(&state, video);
 
+        let settings = state.load_settings();
+        let media_opts = crate::prefs_apply::media_options_from_prefs(&settings.prefs);
+        let opt_refs: Vec<&str> = media_opts.iter().map(String::as_str).collect();
+
         state
             .player
-            .with_mut(|p| p.open_path(&path_buf))
+            .with_mut(|p| p.open_path_with_options(&path_buf, &opt_refs))
             .ok_or_else(|| "Playback engine unavailable".to_string())?
             .map_err(|e| e.to_string())?;
 
-        let volume = state.load_settings().volume;
-        let _ = state.player.with(|p| p.set_volume(volume));
+        let volume = initial_volume(&state);
+        let _ = state.player.with(|p| {
+            p.set_volume(volume);
+            crate::prefs_apply::apply_session_prefs(p, &settings.prefs);
+        });
 
         // Defer resume until length is known (poller applies pending_seek).
         if let Ok(mut pending) = state.pending_seek.lock() {
             *pending = None;
         }
-        if state.load_settings().resume_playback {
+        if crate::prefs_apply::should_resume(&settings) {
             if let Ok(store) = state.settings.lock() {
                 if let Ok(map) = store.load_resume_positions() {
                     if let Some((pos, _)) = map.get(&path) {
@@ -108,14 +135,18 @@ pub fn play_mrl(state: State<'_, AppState>, mrl: String) -> Result<SessionInfo, 
             && !mrl.to_ascii_lowercase().ends_with(".m4a");
         rebind_hwnd_if_needed(&state, looks_video);
 
+        let settings = state.load_settings();
         state
             .player
             .with_mut(|p| p.open_mrl(&mrl))
             .ok_or_else(|| "Playback engine unavailable".to_string())?
             .map_err(|e| e.to_string())?;
 
-        let volume = state.load_settings().volume;
-        let _ = state.player.with(|p| p.set_volume(volume));
+        let volume = initial_volume(&state);
+        let _ = state.player.with(|p| {
+            p.set_volume(volume);
+            crate::prefs_apply::apply_session_prefs(p, &settings.prefs);
+        });
         if let Ok(mut pending) = state.pending_seek.lock() {
             *pending = None;
         }
@@ -231,7 +262,8 @@ pub fn seek_relative(state: State<'_, AppState>, delta_ms: i64) -> Result<(), St
 
 #[tauri::command]
 pub fn set_volume(state: State<'_, AppState>, volume: i32) -> Result<(), String> {
-    let volume = volume.clamp(0, 200);
+    let max = max_volume_from_settings(&state);
+    let volume = volume.clamp(0, max);
     #[cfg(feature = "vlc")]
     {
         let _ = state.player.with(|p| p.set_volume(volume));
@@ -361,7 +393,8 @@ fn looks_like_video(path: &str) -> bool {
 
 #[cfg(feature = "vlc")]
 pub(crate) fn persist_resume(state: &AppState) {
-    if !state.load_settings().resume_playback {
+    let settings = state.load_settings();
+    if !crate::prefs_apply::should_resume(&settings) {
         return;
     }
     let (path, pos, time_ms) = {

@@ -2,7 +2,7 @@
 
 #[cfg(feature = "vlc")]
 use crate::player_service::PlayerService;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 
 /// Shared optional [`PlayerService`] (`None` = UI-only / engine unavailable).
 #[derive(Clone, Default)]
@@ -28,11 +28,12 @@ impl PlayerHandle {
         Self::default()
     }
 
-    /// Lock the inner mutex.
+    /// Install (or replace) the engine after deferred init.
     #[cfg(feature = "vlc")]
-    #[allow(dead_code)]
-    pub fn lock(&self) -> Result<MutexGuard<'_, Option<PlayerService>>, ()> {
-        self.inner.lock().map_err(|_| ())
+    pub fn install(&self, service: PlayerService) -> Result<(), ()> {
+        let mut guard = self.inner.lock().map_err(|_| ())?;
+        *guard = Some(service);
+        Ok(())
     }
 
     /// Run `f` when the engine is available.

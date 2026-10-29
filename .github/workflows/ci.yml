@@ -42,6 +42,9 @@ jobs:
       - name: Typecheck frontend
         run: npx vue-tsc --noEmit
 
+      - name: Unit test frontend
+        run: npm run test:run
+
       - name: Prepare vendored libVLC
         shell: pwsh
         run: .\scripts\ci-prepare-vlc.ps1

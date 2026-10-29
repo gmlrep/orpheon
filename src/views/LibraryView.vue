@@ -1,51 +1,80 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, shallowRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { open } from "@tauri-apps/plugin-dialog";
 import { storeToRefs } from "pinia";
-import { useLibraryStore } from "../stores/library";
+import { useLibraryStore, type MusicSort, type VideoSort } from "../stores/library";
 import { usePlaybackStore } from "../stores/playback";
-import { useUiStore } from "../stores/ui";
 import AppIcon from "../components/AppIcon.vue";
 import MediaThumb from "../components/MediaThumb.vue";
 import { formatDuration } from "../utils/format";
 import type { MediaItem } from "../types";
+import { SEARCH_DEBOUNCE_MS } from "../config/app";
+
+defineOptions({ name: "LibraryView" });
 
 const props = defineProps<{ kind: "video" | "audio" }>();
 
 const { t } = useI18n();
 const library = useLibraryStore();
 const playback = usePlaybackStore();
-const ui = useUiStore();
-const { videos, music } = storeToRefs(library);
-const { listQuery } = storeToRefs(ui);
-const sortOpen = ref(false);
+const { videos, music, listQuery, videoSort, musicSort, pending } = storeToRefs(library);
+const sortOpen = shallowRef(false);
 
 const items = computed(() => (props.kind === "video" ? videos.value : music.value));
+const isLoading = computed(() =>
+  props.kind === "video" ? !!pending.value.videos : !!pending.value.music,
+);
 
 const sorted = computed(() => {
   const copy = [...items.value];
   if (props.kind === "video") {
-    const key = ui.videoSort;
+    const key = videoSort.value;
     if (key === "title") copy.sort((a, b) => a.title.localeCompare(b.title));
     else if (key === "duration")
       copy.sort((a, b) => (a.duration_ms ?? 0) - (b.duration_ms ?? 0));
     else copy.sort((a, b) => b.id - a.id);
   } else {
-    const key = ui.musicSort;
+    const key = musicSort.value;
     if (key === "duration") copy.sort((a, b) => (a.duration_ms ?? 0) - (b.duration_ms ?? 0));
     else copy.sort((a, b) => a.title.localeCompare(b.title));
   }
   return copy;
 });
 
+let reloadGen = 0;
+let debounceTimer = 0;
+
 async function reload() {
-  if (props.kind === "video") await library.loadVideos(ui.listQuery);
-  else await library.loadMusic(ui.listQuery);
+  const gen = ++reloadGen;
+  if (props.kind === "video") await library.loadVideos(listQuery.value);
+  else await library.loadMusic(listQuery.value);
+  if (gen !== reloadGen) return;
 }
 
-onMounted(reload);
-watch(() => [props.kind, ui.listQuery], reload);
+function scheduleReload() {
+  window.clearTimeout(debounceTimer);
+  debounceTimer = window.setTimeout(() => {
+    void reload();
+  }, SEARCH_DEBOUNCE_MS);
+}
+
+onMounted(() => {
+  void reload();
+});
+
+watch(
+  () => [props.kind, listQuery.value] as const,
+  ([kind, query], prev) => {
+    if (!prev) {
+      void reload();
+      return;
+    }
+    const [prevKind] = prev;
+    if (kind !== prevKind) void reload();
+    else if (query !== prev[1]) scheduleReload();
+  },
+);
 
 async function addFolder() {
   const selected = await open({ directory: true, multiple: false });
@@ -55,20 +84,17 @@ async function addFolder() {
 }
 
 function playItem(item: MediaItem) {
-  const q = playback.mediaToQueue(sorted.value, props.kind === "video");
-  const idx = sorted.value.findIndex((m) => m.id === item.id);
-  void playback.playPath(item.path, {
-    title: item.title,
-    mediaId: item.id,
-    isVideo: props.kind === "video",
-    artworkPath: item.artwork_path,
-    queue: q,
-    queueIndex: Math.max(0, idx),
-  });
+  void playback.playMediaItem(item, sorted.value);
 }
 
 function playFirst() {
   if (sorted.value[0]) playItem(sorted.value[0]);
+}
+
+function onSort(id: string) {
+  if (props.kind === "video") library.setVideoSort(id as VideoSort);
+  else library.setMusicSort(id as MusicSort);
+  sortOpen.value = false;
 }
 
 const videoSortOpts = [
@@ -79,8 +105,6 @@ const videoSortOpts = [
 ] as const;
 const musicSortOpts = [
   ["title", "sort.title"],
-  ["artist", "sort.artist"],
-  ["album", "sort.album"],
   ["duration", "sort.duration"],
 ] as const;
 </script>
@@ -97,7 +121,12 @@ const musicSortOpts = [
     <div class="lib-bar">
       <label class="search">
         <AppIcon name="search" :size="16" />
-        <input v-model="listQuery" type="search" :placeholder="t('library.search')" />
+        <input
+          :value="listQuery"
+          type="search"
+          :placeholder="t('library.search')"
+          @input="library.setListQuery(($event.target as HTMLInputElement).value)"
+        />
       </label>
       <button type="button" class="btn-ghost" @click="addFolder">
         {{ t("library.addFolder") }}
@@ -105,7 +134,7 @@ const musicSortOpts = [
       <button type="button" class="btn-primary" :disabled="!sorted.length" @click="playFirst">
         {{ t("library.play") }}
       </button>
-      <div style="position: relative">
+      <div class="sort-wrap">
         <button
           type="button"
           class="icon-btn"
@@ -114,29 +143,13 @@ const musicSortOpts = [
         >
           <AppIcon name="sort" :size="16" />
         </button>
-        <div
-          v-if="sortOpen"
-          style="
-            position: absolute;
-            right: 0;
-            top: 36px;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 6px;
-            z-index: 5;
-            min-width: 160px;
-          "
-        >
+        <div v-if="sortOpen" class="sort-menu">
           <button
             v-for="[id, label] in kind === 'video' ? videoSortOpts : musicSortOpts"
             :key="id"
             type="button"
-            style="display: block; width: 100%; text-align: left; padding: 8px 10px; border-radius: 6px"
-            @click="
-              kind === 'video' ? (ui.videoSort = id as typeof ui.videoSort) : (ui.musicSort = id as typeof ui.musicSort);
-              sortOpen = false;
-            "
+            class="sort-option"
+            @click="onSort(id)"
           >
             {{ t(label) }}
           </button>
@@ -144,7 +157,8 @@ const musicSortOpts = [
       </div>
     </div>
 
-    <p v-if="!sorted.length" class="empty">
+    <p v-if="isLoading && !sorted.length" class="empty">{{ t("common.loading") }}</p>
+    <p v-else-if="!sorted.length" class="empty">
       {{ kind === "video" ? t("library.emptyVideos") : t("library.emptyMusic") }}
     </p>
 
@@ -152,7 +166,7 @@ const musicSortOpts = [
       <thead>
         <tr>
           <th>{{ kind === "video" ? t("library.title") : t("library.track") }}</th>
-          <th style="width: 90px">{{ t("library.duration") }}</th>
+          <th class="dur-col">{{ t("library.duration") }}</th>
         </tr>
       </thead>
       <tbody>
@@ -181,3 +195,30 @@ const musicSortOpts = [
     </table>
   </div>
 </template>
+
+<style scoped>
+.sort-wrap {
+  position: relative;
+}
+.sort-menu {
+  position: absolute;
+  right: 0;
+  top: 36px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  z-index: 5;
+  min-width: 160px;
+}
+.sort-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+.dur-col {
+  width: 90px;
+}
+</style>

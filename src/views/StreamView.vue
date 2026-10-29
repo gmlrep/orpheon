@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { shallowRef } from "vue";
 import { useI18n } from "vue-i18n";
 import { usePlaybackStore } from "../stores/playback";
 
+defineOptions({ name: "StreamView" });
+
 const { t } = useI18n();
 const playback = usePlaybackStore();
-const mrl = ref("");
-const error = ref("");
+const mrl = shallowRef("");
+const error = shallowRef("");
 
 async function openStream() {
   error.value = "";
@@ -24,13 +26,27 @@ async function openStream() {
       <h1>{{ t("stream.title") }}</h1>
     </div>
     <div class="lib-bar">
-      <label class="search" style="max-width: 560px">
-        <input v-model="mrl" type="url" :placeholder="t('stream.placeholder')" @keydown.enter="openStream" />
+      <label class="search stream-input">
+        <input
+          v-model="mrl"
+          type="url"
+          :placeholder="t('stream.placeholder')"
+          @keydown.enter="openStream"
+        />
       </label>
       <button type="button" class="btn-primary" :disabled="!mrl.trim()" @click="openStream">
         {{ t("stream.open") }}
       </button>
     </div>
-    <p v-if="error" class="empty" style="color: var(--negative)">{{ error }}</p>
+    <p v-if="error" class="empty stream-error">{{ error }}</p>
   </div>
 </template>
+
+<style scoped>
+.stream-input {
+  max-width: 560px;
+}
+.stream-error {
+  color: var(--negative);
+}
+</style>

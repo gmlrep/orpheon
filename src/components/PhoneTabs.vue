@@ -2,26 +2,18 @@
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
 import { useUiStore } from "../stores/ui";
-import type { RouteName } from "../types";
+import { browseTabs } from "../nav";
 import AppIcon from "./AppIcon.vue";
 
 const { t } = useI18n();
 const ui = useUiStore();
 const { route } = storeToRefs(ui);
-
-const tabs: { id: RouteName; icon: string; label: string }[] = [
-  { id: "home", icon: "home", label: "nav.home" },
-  { id: "videos", icon: "video", label: "nav.videos" },
-  { id: "music", icon: "music", label: "nav.music" },
-  { id: "playlists", icon: "playlist", label: "nav.playlists" },
-  { id: "recent", icon: "recent", label: "nav.recent" },
-];
 </script>
 
 <template>
-  <nav class="phone-tabs" aria-label="Primary">
+  <nav class="phone-tabs" :aria-label="t('nav.primary')">
     <a
-      v-for="tab in tabs"
+      v-for="tab in browseTabs"
       :key="tab.id"
       href="#"
       :aria-current="route === tab.id ? 'page' : undefined"

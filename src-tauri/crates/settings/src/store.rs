@@ -22,11 +22,11 @@ CREATE TABLE IF NOT EXISTS settings (
 #[serde(rename_all = "lowercase")]
 pub enum ThemePreference {
     /// Follow OS.
-    #[default]
     System,
     /// Force light.
     Light,
-    /// Force dark.
+    /// Force dark (product default — matches shell bootstrap).
+    #[default]
     Dark,
 }
 
@@ -53,7 +53,8 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            theme: ThemePreference::System,
+            // Matches frontend `DEFAULT_THEME` / `index.html` data-theme.
+            theme: ThemePreference::Dark,
             volume: 80,
             hw_accel: true,
             resume_playback: true,

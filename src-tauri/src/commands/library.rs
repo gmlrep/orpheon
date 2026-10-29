@@ -20,10 +20,13 @@ pub fn list_media(
     state: State<'_, AppState>,
     media_type: Option<String>,
     query: Option<String>,
+    limit: Option<i64>,
 ) -> Result<Vec<MediaItem>, String> {
     let db = state.library.lock().map_err(|_| "library lock".to_string())?;
     let mt = media_type.as_deref().map(MediaType::parse);
-    let mut items = db.list_media(mt).map_err(|e| e.to_string())?;
+    let mut items = db
+        .list_media_limited(mt, limit)
+        .map_err(|e| e.to_string())?;
     if let Some(q) = query {
         let q = q.trim().to_lowercase();
         if !q.is_empty() {
@@ -54,7 +57,6 @@ pub fn list_folders(
     let roots = db
         .list_scan_roots_with_kind(kind.as_deref())
         .map_err(|e| e.to_string())?;
-    let all = db.list_media(None).map_err(|e| e.to_string())?;
     let mut out = Vec::new();
     for (path, root_kind) in roots {
         let name = Path::new(&path)
@@ -62,7 +64,9 @@ pub fn list_folders(
             .and_then(|s| s.to_str())
             .unwrap_or(&path)
             .to_string();
-        let count = all.iter().filter(|m| m.path.starts_with(&path)).count() as i64;
+        let count = db
+            .count_media_under_prefix(&path)
+            .map_err(|e| e.to_string())?;
         out.push(FolderDto {
             name,
             path,
@@ -157,7 +161,6 @@ pub fn continue_watching(state: State<'_, AppState>) -> Result<Vec<serde_json::V
         store.load_resume_positions().map_err(|e| e.to_string())?
     };
     let db = state.library.lock().map_err(|_| "library lock".to_string())?;
-    let all = db.list_media(None).map_err(|e| e.to_string())?;
     let mut out = Vec::new();
     let mut pairs: Vec<_> = resumes.into_iter().collect();
     pairs.sort_by(|a, b| {
@@ -170,7 +173,10 @@ pub fn continue_watching(state: State<'_, AppState>) -> Result<Vec<serde_json::V
             })
     });
     for (path, (pos, _time_ms)) in pairs.into_iter().take(24) {
-        if let Some(item) = all.iter().find(|m| m.path == path) {
+        if let Some(item) = db
+            .get_media_by_path(&path)
+            .map_err(|e| e.to_string())?
+        {
             out.push(serde_json::json!({
                 "id": item.id,
                 "title": item.title,
@@ -202,6 +208,21 @@ pub fn continue_watching(state: State<'_, AppState>) -> Result<Vec<serde_json::V
 
 #[tauri::command]
 pub fn touch_recent(state: State<'_, AppState>, media_id: i64) -> Result<(), String> {
+    let settings = state.load_settings();
+    if !settings.prefs.save_recent {
+        return Ok(());
+    }
     let db = state.library.lock().map_err(|_| "library lock".to_string())?;
+    let filter = settings.prefs.recent_filter_regex.trim();
+    if !filter.is_empty() {
+        if let Ok(Some(item)) = db.get_media_by_id(media_id) {
+            let needle = filter.to_ascii_lowercase();
+            let path_l = item.path.to_ascii_lowercase();
+            let title_l = item.title.to_ascii_lowercase();
+            if path_l.contains(&needle) || title_l.contains(&needle) {
+                return Ok(());
+            }
+        }
+    }
     db.touch_recent(media_id).map_err(|e| e.to_string())
 }

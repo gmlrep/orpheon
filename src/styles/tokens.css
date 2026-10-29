@@ -8,6 +8,8 @@
   --border: #1a1a1a;
   --rule: #161616;
   --control: #3a3a3a;
+  --switch-track: #2a2a2a;
+  --switch-knob: #555555;
   --text: #ffffff;
   --muted: #b4b4b4;
   --faint: #949494;
@@ -25,6 +27,24 @@
   --pill-warning-ink: #e5a93b;
   --pill-neutral-bg: #222222;
   --pill-neutral-ink: #ffffff;
+  --seg-active-bg: #222222;
+  --seg-active-ink: #ffffff;
+
+  --thumb-bg: #151515;
+  --seek-track: #090909;
+  --seek-fill: #371f06;
+  --chrome-faint: #8f8f8f;
+  --chrome-muted: #bbb;
+  --overlay-scrim: rgba(0, 0, 0, 0.85);
+  --shadow-float: 0 16px 40px rgba(0, 0, 0, 0.55);
+  --scrollbar-thumb: #2a2a2a;
+  --scrollbar-thumb-hover: #3a3a3a;
+  --close-hover-bg: #e5566f;
+  --close-hover-ink: #fff;
+  --player-void: #0b0b0b;
+  --player-art-empty: #151515;
+  --player-art-glow: #2a1c0e;
+  --switch-knob-on: #fff;
 
   --font: "Inter", system-ui, sans-serif;
   --fs-title: 24px;
@@ -51,6 +71,60 @@
   --t-hover: 150ms;
 }
 
+:root[data-theme="light"] {
+  --ground: #f4f4f4;
+  --surface: #ffffff;
+  --raised: #ececec;
+  --active: #e2e2e2;
+  --border: #d8d8d8;
+  --rule: #e6e6e6;
+  --control: #d0d0d0;
+  --switch-track: #c8c8c8;
+  --switch-knob: #f7f7f7;
+  --text: #121212;
+  --muted: #5c5c5c;
+  --faint: #7a7a7a;
+  --accent: #d37918;
+  --primary: #121212;
+  --primary-ink: #ffffff;
+  --positive: #1f8a4c;
+  --negative: #c43b52;
+  --warning: #b07a12;
+  --pill-positive-bg: #e5f5eb;
+  --pill-positive-ink: #1f8a4c;
+  --pill-negative-bg: #f8e8eb;
+  --pill-negative-ink: #c43b52;
+  --pill-warning-bg: #f7efd9;
+  --pill-warning-ink: #b07a12;
+  --pill-neutral-bg: #e8e8e8;
+  --pill-neutral-ink: #121212;
+  --seg-active-bg: #1a1a1a;
+  --seg-active-ink: #ffffff;
+
+  --thumb-bg: #e8e8e8;
+  --seek-track: #d8d8d8;
+  --seek-fill: #f0d9b8;
+  --chrome-faint: #7a7a7a;
+  --chrome-muted: #5c5c5c;
+  --overlay-scrim: rgba(0, 0, 0, 0.45);
+  --shadow-float: 0 16px 40px rgba(0, 0, 0, 0.18);
+  --scrollbar-thumb: #c8c8c8;
+  --scrollbar-thumb-hover: #b0b0b0;
+  --close-hover-bg: #c43b52;
+  --close-hover-ink: #fff;
+  --player-void: #f4f4f4;
+  --player-art-empty: #ececec;
+  --player-art-glow: #f0d9b8;
+  --switch-knob-on: #ffffff;
+}
+
+:root[data-reduce-motion="1"] *,
+:root[data-reduce-motion="1"] *::before,
+:root[data-reduce-motion="1"] *::after {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
+}
+
 *,
 *::before,
 *::after {
@@ -72,7 +146,7 @@ body {
   overflow: hidden;
   user-select: none;
   scrollbar-width: thin;
-  scrollbar-color: #2a2a2a transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -83,13 +157,13 @@ body {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: #2a2a2a;
+  background: var(--scrollbar-thumb);
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #3a3a3a;
+  background: var(--scrollbar-thumb-hover);
   border: 2px solid transparent;
   background-clip: padding-box;
 }

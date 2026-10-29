@@ -1,25 +1,21 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, shallowRef, useTemplateRef, watch } from "vue";
 
-const props = defineProps<{ value: number }>();
+const model = defineModel<number>({ required: true });
 const emit = defineEmits<{
-  seek: [number];
   scrubStart: [];
   scrubEnd: [];
 }>();
 
-const track = ref<HTMLElement | null>(null);
-const dragging = ref(false);
-const local = ref(props.value);
+const track = useTemplateRef<HTMLElement>("track");
+const dragging = shallowRef(false);
+const local = shallowRef(model.value);
 
-watch(
-  () => props.value,
-  (v) => {
-    if (!dragging.value) local.value = v;
-  },
-);
+watch(model, (v) => {
+  if (!dragging.value) local.value = v;
+});
 
-const display = computed(() => (dragging.value ? local.value : props.value));
+const display = computed(() => (dragging.value ? local.value : model.value));
 
 function posFromEvent(e: PointerEvent) {
   const el = track.value;
@@ -37,14 +33,14 @@ function onPointerDown(e: PointerEvent) {
   el.setPointerCapture(e.pointerId);
   const p = posFromEvent(e);
   local.value = p;
-  emit("seek", p);
+  model.value = p;
 }
 
 function onPointerMove(e: PointerEvent) {
   if (!dragging.value) return;
   const p = posFromEvent(e);
   local.value = p;
-  emit("seek", p);
+  model.value = p;
 }
 
 function onPointerUp(e: PointerEvent) {
@@ -67,7 +63,7 @@ function onKey(e: KeyboardEvent) {
   else return;
   e.preventDefault();
   local.value = next;
-  emit("seek", next);
+  model.value = next;
 }
 </script>
 
@@ -101,7 +97,7 @@ function onKey(e: KeyboardEvent) {
   min-width: 80px;
   height: 28px;
   border-radius: 6px;
-  background: #090909;
+  background: var(--seek-track);
   cursor: pointer;
   touch-action: none;
   user-select: none;
@@ -114,7 +110,7 @@ function onKey(e: KeyboardEvent) {
   width: calc(var(--p, 0) * 100%);
   max-width: 100%;
   border-radius: 4px;
-  background: #371f06;
+  background: var(--seek-fill);
   pointer-events: none;
 }
 .seekbar-head {

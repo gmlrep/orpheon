@@ -26,7 +26,7 @@ impl LibraryDb {
         conn.execute_batch(
             "PRAGMA foreign_keys = ON;
              PRAGMA journal_mode = WAL;
-             PRAGMA busy_timeout = 5000;",
+             PRAGMA busy_timeout = 5000;", // keep in sync with app SQLITE_BUSY_TIMEOUT_MS
         )?;
         conn.execute_batch(MIGRATION_SQL)?;
         let count: i64 =
@@ -46,7 +46,7 @@ impl LibraryDb {
         let conn = Connection::open_in_memory()?;
         conn.execute_batch(
             "PRAGMA foreign_keys = ON;
-             PRAGMA busy_timeout = 5000;",
+             PRAGMA busy_timeout = 5000;", // keep in sync with app SQLITE_BUSY_TIMEOUT_MS
         )?;
         conn.execute_batch(MIGRATION_SQL)?;
         conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])?;
@@ -254,6 +254,35 @@ impl LibraryDb {
         )?;
         let mut rows = stmt.query_map(params![id], map_media_row)?;
         Ok(rows.next().transpose()?)
+    }
+
+    /// Fetch a single media row by absolute path.
+    ///
+    /// # Errors
+    /// Returns [`LibraryError::Db`].
+    pub fn get_media_by_path(&self, path: &str) -> Result<Option<MediaItem>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, path, title, duration_ms, media_type, mtime, artwork_path
+             FROM media_items WHERE path = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![path], map_media_row)?;
+        Ok(rows.next().transpose()?)
+    }
+
+    /// Count media whose path equals `prefix` or is nested under it.
+    ///
+    /// # Errors
+    /// Returns [`LibraryError::Db`].
+    pub fn count_media_under_prefix(&self, prefix: &str) -> Result<i64> {
+        // instr(path, prefix) = 1 → starts_with; covers Windows/Unix separators
+        // as stored in the DB without loading every row into Rust.
+        self.conn.query_row(
+            "SELECT COUNT(*) FROM media_items
+             WHERE path = ?1 OR instr(path, ?1) = 1",
+            params![prefix],
+            |row| row.get(0),
+        )
+        .map_err(Into::into)
     }
 
     /// Delete media rows whose files no longer exist under the given scan roots.

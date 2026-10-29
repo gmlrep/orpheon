@@ -1,9 +1,11 @@
 import { defineStore } from "pinia";
-import { computed, ref } from "vue";
+import { computed, shallowRef } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { MediaItem, PlaybackTick, SessionInfo, TrackSnapshot } from "../types";
+import type { MediaItem, PlaybackTick, ResumeItem, SessionInfo, TrackSnapshot } from "../types";
 import { useUiStore } from "./ui";
+import { useSettingsStore } from "./settings";
+import { DEFAULT_VOLUME } from "../config/app";
 
 export interface QueueItem {
   path: string;
@@ -12,6 +14,8 @@ export interface QueueItem {
   isVideo: boolean;
   artworkPath?: string | null;
 }
+
+export type TrackTab = "video" | "audio" | "subs";
 
 const emptySession = (): SessionInfo => ({
   active: false,
@@ -24,7 +28,7 @@ const emptySession = (): SessionInfo => ({
   position: 0,
   timeMs: 0,
   lengthMs: 0,
-  volume: 80,
+  volume: DEFAULT_VOLUME,
 });
 
 async function tearDownVideoSurface() {
@@ -36,26 +40,49 @@ async function tearDownVideoSurface() {
 }
 
 export const usePlaybackStore = defineStore("playback", () => {
-  const engineAvailable = ref(false);
-  const session = ref<SessionInfo>(emptySession());
-  const playing = ref(false);
-  const tracks = ref<TrackSnapshot | null>(null);
-  const queue = ref<QueueItem[]>([]);
-  const queueIndex = ref(-1);
-  const coverPath = ref<string | null>(null);
+  const engineAvailable = shallowRef(false);
+  const session = shallowRef<SessionInfo>(emptySession());
+  const playing = shallowRef(false);
+  const tracks = shallowRef<TrackSnapshot | null>(null);
+  const queue = shallowRef<QueueItem[]>([]);
+  const queueIndex = shallowRef(-1);
+  const coverPath = shallowRef<string | null>(null);
   /** While true, tick position updates do not overwrite local scrubbing UI. */
-  const scrubbing = ref(false);
-  const muted = ref(false);
-  let volumeBeforeMute = 80;
+  const scrubbing = shallowRef(false);
+  const muted = shallowRef(false);
+  const tracksOpen = shallowRef(false);
+  const trackTab = shallowRef<TrackTab>("video");
+  const eqOpen = shallowRef(false);
+  let volumeBeforeMute = DEFAULT_VOLUME;
   let unlistenTick: UnlistenFn | null = null;
   let unlistenEnded: UnlistenFn | null = null;
   let unlistenHotkey: UnlistenFn | null = null;
   let unlistenStopped: UnlistenFn | null = null;
+  let unlistenEngine: UnlistenFn | null = null;
 
   const showNowBar = computed(() => {
     const ui = useUiStore();
     return session.value.active && ui.route !== "player";
   });
+
+  function setTracksOpen(value: boolean) {
+    tracksOpen.value = value;
+  }
+
+  function closeOverlays() {
+    tracksOpen.value = false;
+    eqOpen.value = false;
+  }
+
+  function openTrackTab(tab: TrackTab) {
+    if (tracksOpen.value && trackTab.value === tab) {
+      tracksOpen.value = false;
+      return;
+    }
+    trackTab.value = tab;
+    tracksOpen.value = true;
+    eqOpen.value = false;
+  }
 
   async function bootstrap() {
     try {
@@ -68,6 +95,11 @@ export const usePlaybackStore = defineStore("playback", () => {
       }
     } catch {
       engineAvailable.value = false;
+    }
+    if (!unlistenEngine) {
+      unlistenEngine = await listen<boolean>("engine://ready", (ev) => {
+        engineAvailable.value = !!ev.payload;
+      });
     }
     if (!unlistenTick) {
       unlistenTick = await listen<PlaybackTick>("playback://tick", (ev) => {
@@ -91,7 +123,7 @@ export const usePlaybackStore = defineStore("playback", () => {
     }
     if (!unlistenEnded) {
       unlistenEnded = await listen("playback://ended", () => {
-        void nextTrack();
+        void onPlaybackEnded();
       });
     }
     if (!unlistenHotkey) {
@@ -100,8 +132,7 @@ export const usePlaybackStore = defineStore("playback", () => {
         else if (ev.payload === "previous") void previousTrack();
         else if (ev.payload === "minimize") void minimizePlayer();
         else if (ev.payload === "toggleUi") {
-          const ui = useUiStore();
-          ui.uiHidden = !ui.uiHidden;
+          useUiStore().toggleUiHidden();
         }
       });
     }
@@ -112,6 +143,7 @@ export const usePlaybackStore = defineStore("playback", () => {
         coverPath.value = null;
         queue.value = [];
         queueIndex.value = -1;
+        closeOverlays();
       });
     }
   }
@@ -144,6 +176,7 @@ export const usePlaybackStore = defineStore("playback", () => {
 
   async function afterPlay(item: QueueItem, expandVideo: boolean) {
     const ui = useUiStore();
+    const settings = useSettingsStore();
     playing.value = true;
     void refreshCover(item.path, item.mediaId);
     if (item.mediaId != null) {
@@ -155,6 +188,18 @@ export const usePlaybackStore = defineStore("playback", () => {
     }
     if (session.value.isVideo && expandVideo) {
       ui.navigate("player");
+    }
+    if (settings.startFullscreen() && session.value.isVideo && expandVideo) {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        await getCurrentWindow().setFullscreen(true);
+        ui.setFullscreen(true);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!settings.prefBool("autoplay", true) && expandVideo && playing.value) {
+      await playPause();
     }
   }
 
@@ -245,6 +290,7 @@ export const usePlaybackStore = defineStore("playback", () => {
     coverPath.value = null;
     queue.value = [];
     queueIndex.value = -1;
+    closeOverlays();
   }
 
   async function seek(position: number) {
@@ -264,6 +310,53 @@ export const usePlaybackStore = defineStore("playback", () => {
     await invoke("seek_relative", { deltaMs });
   }
 
+  async function onPlaybackEnded() {
+    const settings = useSettingsStore();
+    if (settings.stopAfterEach()) {
+      await handleFinishAction();
+      return;
+    }
+    const repeat = settings.repeatMode();
+    if (repeat === "One") {
+      await seek(0);
+      if (!playing.value) await playPause();
+      return;
+    }
+    if (!queue.value.length) {
+      await handleFinishAction();
+      return;
+    }
+    const next = queueIndex.value + 1;
+    if (next < queue.value.length) {
+      await nextTrack();
+      return;
+    }
+    if (repeat === "All" && queue.value.length) {
+      await playQueueItem(0, { expandVideo: useUiStore().route === "player" });
+      return;
+    }
+    await handleFinishAction();
+  }
+
+  async function handleFinishAction() {
+    const settings = useSettingsStore();
+    const action = settings.onFinish();
+    if (action === "Exit") {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        await getCurrentWindow().close();
+      } catch {
+        await stop();
+      }
+      return;
+    }
+    if (action === "Minimize") {
+      await minimizePlayer();
+      return;
+    }
+    await stop();
+  }
+
   async function nextTrack() {
     if (!queue.value.length) return;
     const next = queueIndex.value + 1;
@@ -281,7 +374,8 @@ export const usePlaybackStore = defineStore("playback", () => {
 
   async function previousTrack() {
     if (!queue.value.length) return;
-    if (session.value.timeMs > 3000) {
+    const restartAfter = useSettingsStore().skipMs("veryShort");
+    if (session.value.timeMs > restartAfter) {
       await seek(0);
       return;
     }
@@ -302,22 +396,27 @@ export const usePlaybackStore = defineStore("playback", () => {
   }
 
   async function setVolume(volume: number) {
-    muted.value = volume <= 0;
-    await invoke("set_volume", { volume });
-    session.value = { ...session.value, volume };
+    const max = useSettingsStore().maxVolume();
+    const clamped = Math.max(0, Math.min(max, Math.round(volume)));
+    muted.value = clamped <= 0;
+    await invoke("set_volume", { volume: clamped });
+    session.value = { ...session.value, volume: clamped };
+  }
+
+  async function nudgeVolume(delta: number) {
+    await setVolume(session.value.volume + delta);
   }
 
   async function toggleMute() {
     if (!muted.value) {
-      volumeBeforeMute = session.value.volume || 80;
+      volumeBeforeMute = session.value.volume || DEFAULT_VOLUME;
       muted.value = true;
       await invoke("set_volume", { volume: 0 });
       session.value = { ...session.value, volume: 0 };
     } else {
       muted.value = false;
-      const v = volumeBeforeMute || 80;
-      await invoke("set_volume", { volume: v });
-      session.value = { ...session.value, volume: v };
+      const v = volumeBeforeMute || DEFAULT_VOLUME;
+      await setVolume(v);
     }
   }
 
@@ -376,6 +475,29 @@ export const usePlaybackStore = defineStore("playback", () => {
     }));
   }
 
+  async function playMediaItem(item: MediaItem, mediaQueue?: MediaItem[], index?: number) {
+    const list = mediaQueue ?? [item];
+    const idx = index ?? list.findIndex((m) => m.id === item.id);
+    const isVideo = item.media_type !== "audio";
+    await playPath(item.path, {
+      title: item.title,
+      mediaId: item.id,
+      isVideo,
+      artworkPath: item.artwork_path,
+      queue: mediaToQueue(list, isVideo),
+      queueIndex: Math.max(0, idx < 0 ? 0 : idx),
+    });
+  }
+
+  async function playResumeItem(item: ResumeItem) {
+    await playPath(item.path, {
+      title: item.title,
+      mediaId: item.id ?? undefined,
+      isVideo: item.mediaType !== "audio",
+      artworkPath: item.artworkPath,
+    });
+  }
+
   return {
     engineAvailable,
     session,
@@ -385,10 +507,16 @@ export const usePlaybackStore = defineStore("playback", () => {
     queueIndex,
     coverPath,
     scrubbing,
+    muted,
+    tracksOpen,
+    trackTab,
+    eqOpen,
     showNowBar,
     bootstrap,
     setQueue,
     playPath,
+    playMediaItem,
+    playResumeItem,
     playMrl,
     playPause,
     stop,
@@ -399,7 +527,7 @@ export const usePlaybackStore = defineStore("playback", () => {
     nextTrack,
     previousTrack,
     setVolume,
-    muted,
+    nudgeVolume,
     toggleMute,
     minimizePlayer,
     openPlayer,
@@ -409,5 +537,8 @@ export const usePlaybackStore = defineStore("playback", () => {
     mediaToQueue,
     refreshCover,
     tearDownVideoSurface,
+    setTracksOpen,
+    closeOverlays,
+    openTrackTab,
   };
 });

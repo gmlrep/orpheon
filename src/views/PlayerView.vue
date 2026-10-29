@@ -1,40 +1,98 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, shallowRef, useTemplateRef } from "vue";
 import { useI18n } from "vue-i18n";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 import { storeToRefs } from "pinia";
 import { usePlaybackStore } from "../stores/playback";
+import { useSettingsStore } from "../stores/settings";
 import { useUiStore } from "../stores/ui";
 import AppIcon from "../components/AppIcon.vue";
 import SeekBar from "../components/SeekBar.vue";
 import VolumeWedge from "../components/VolumeWedge.vue";
+import TracksSheet from "../components/TracksSheet.vue";
+import { useCoverSrc } from "../composables/useCoverSrc";
+import { useVideoStage } from "../composables/useVideoStage";
+import { usePlayerChrome } from "../composables/usePlayerChrome";
 import { formatDuration } from "../utils/format";
+
+defineOptions({ name: "PlayerView" });
 
 const { t } = useI18n();
 const playback = usePlaybackStore();
+const settings = useSettingsStore();
 const ui = useUiStore();
-const { session, playing, tracks, muted, coverPath } = storeToRefs(playback);
-const { tracksOpen, trackTab, fullscreen, uiHidden } = storeToRefs(ui);
+const { session, playing, tracks, muted, coverPath, tracksOpen, trackTab } = storeToRefs(playback);
+const { fullscreen } = storeToRefs(ui);
 
-const stageEl = ref<HTMLElement | null>(null);
-const controlsEl = ref<HTMLElement | null>(null);
-const showRemaining = ref(false);
-/** In fullscreen, controls start visible then auto-hide. */
-const controlsReveal = ref(true);
-let hideTimer = 0;
-let raf = 0;
-let unlistenResize: (() => void) | null = null;
-let fsPoll = 0;
-let cursorPoll = 0;
+const skipShortMs = computed(() => settings.skipMs("short"));
+const maxVolume = computed(() => settings.maxVolume());
+
+const stageEl = useTemplateRef<HTMLElement>("stageEl");
+const controlsEl = useTemplateRef<HTMLElement>("controlsEl");
+const showRemaining = shallowRef(false);
 
 const isMusic = computed(() => !session.value.isVideo);
-const chromeVisible = computed(
-  () => (!fullscreen.value || controlsReveal.value) && !uiHidden.value,
-);
-const coverSrc = computed(() =>
-  coverPath.value ? convertFileSrc(coverPath.value.replace(/\\/g, "/")) : null,
-);
+const coverSrc = useCoverSrc(coverPath);
+
+const scheduleSyncRef = shallowRef<() => void>(() => {});
+
+const { chromeVisible, revealControls, onStageMove, toggleFullscreen } = usePlayerChrome({
+  scheduleSync: () => scheduleSyncRef.value(),
+  tracksOpen,
+});
+
+function runMouseAction(action: string) {
+  switch (action) {
+    case "Play / Pause":
+      void playback.playPause();
+      break;
+    case "Fullscreen":
+    case "Toggle fullscreen":
+      void toggleFullscreen();
+      break;
+    case "Ignore":
+    default:
+      break;
+  }
+}
+
+let clickTimer = 0;
+function onStageClick() {
+  window.clearTimeout(clickTimer);
+  clickTimer = window.setTimeout(() => {
+    runMouseAction(settings.mouseAction("single"));
+  }, 220);
+}
+
+function onStageDblClick(e: MouseEvent) {
+  e.preventDefault();
+  window.clearTimeout(clickTimer);
+  runMouseAction(settings.mouseAction("double"));
+}
+
+function onStageWheel(e: WheelEvent) {
+  if (!playback.session.active) return;
+  const horizontal = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+  const mode = horizontal ? settings.mouseHScrollMode() : settings.mouseWheelMode();
+  if (mode === "Ignore") return;
+  e.preventDefault();
+  let delta = horizontal ? e.deltaX : e.deltaY;
+  if (settings.mouseReverseScroll()) delta = -delta;
+  const sign = delta > 0 ? -1 : 1;
+  if (mode === "Volume") {
+    void playback.nudgeVolume(sign * settings.volumeStep());
+  } else if (mode === "Seek") {
+    void playback.seekRelative(sign * settings.skipMs("short"));
+  }
+}
+
+const { scheduleSync } = useVideoStage({
+  stageEl,
+  controlsEl,
+  isMusic,
+  chromeVisible,
+});
+scheduleSyncRef.value = scheduleSync;
 
 const durationLabel = computed(() => {
   if (!showRemaining.value) return formatDuration(session.value.lengthMs);
@@ -43,108 +101,8 @@ const durationLabel = computed(() => {
   return s === "—" ? s : `-${s}`;
 });
 
-const sheetTracks = computed(() => {
-  if (!tracks.value) return [] as [number, string][];
-  if (trackTab.value === "video") return tracks.value.video;
-  if (trackTab.value === "audio") return tracks.value.audio;
-  return tracks.value.spu;
-});
-
-const selectedId = computed(() => {
-  if (!tracks.value) return -1;
-  if (trackTab.value === "video") return tracks.value.selectedVideo;
-  if (trackTab.value === "audio") return tracks.value.selectedAudio;
-  return tracks.value.selectedSpu;
-});
-
-async function syncStage() {
-  if (!stageEl.value) return;
-  await nextTick();
-  // Fullscreen: HWND always fills the stage so aspect/letterbox never jumps.
-  const box = (fullscreen.value ? stageEl.value.closest(".player-stage") : null) as
-    | HTMLElement
-    | null;
-  const target = box ?? stageEl.value;
-  const rect = target.getBoundingClientRect();
-  const scale = window.devicePixelRatio || 1;
-  const width = Math.max(1, Math.round(rect.width));
-  const height = Math.max(1, Math.round(rect.height));
-
-  await invoke("update_stage_rect", {
-    rect: {
-      x: Math.round(rect.left),
-      y: Math.round(rect.top),
-      width,
-      height,
-      visible: !isMusic.value,
-      scaleFactor: scale,
-    },
-  });
-
-  // Only punch holes while chrome is visible (opaque controls cover the hole).
-  // Never cut a hover strip when chrome is hidden — that clips video paint.
-  const holes: number[][] = [];
-  if (controlsEl.value && chromeVisible.value) {
-    const c = controlsEl.value.getBoundingClientRect();
-    holes.push([
-      Math.round((c.left - rect.left) * scale),
-      Math.round((c.top - rect.top) * scale),
-      Math.round(c.width * scale),
-      Math.round(c.height * scale),
-      0,
-    ]);
-  }
-  const sheet = document.querySelector(".tracks-sheet.is-open") as HTMLElement | null;
-  if (sheet && chromeVisible.value) {
-    const s = sheet.getBoundingClientRect();
-    holes.push([
-      Math.round((s.left - rect.left) * scale),
-      Math.round((s.top - rect.top) * scale),
-      Math.round(s.width * scale),
-      Math.round(s.height * scale),
-      8,
-    ]);
-  }
-  await invoke("set_overlay_holes", { holes });
-}
-
-function scheduleSync() {
-  cancelAnimationFrame(raf);
-  raf = requestAnimationFrame(() => {
-    void syncStage();
-  });
-}
-
-function revealControls() {
-  controlsReveal.value = true;
-  if (uiHidden.value) ui.uiHidden = false;
-  window.clearTimeout(hideTimer);
-  if (fullscreen.value && !tracksOpen.value) {
-    hideTimer = window.setTimeout(() => {
-      controlsReveal.value = false;
-      scheduleSync();
-    }, 2200);
-  }
-  scheduleSync();
-}
-
-function onStageMove() {
-  if (fullscreen.value) revealControls();
-}
-
-async function toggleFullscreen() {
-  const win = getCurrentWindow();
-  const next = !(await win.isFullscreen());
-  await win.setFullscreen(next);
-  ui.setFullscreen(next);
-  controlsReveal.value = true;
-  if (next) revealControls();
-  await nextTick();
-  scheduleSync();
-}
-
 function openTab(tab: "video" | "audio" | "subs") {
-  ui.openTrackTab(tab);
+  playback.openTrackTab(tab);
   void playback.refreshTracks();
   revealControls();
 }
@@ -157,57 +115,16 @@ onMounted(async () => {
       console.error(e);
     }
   }
-  scheduleSync();
-  window.addEventListener("resize", scheduleSync);
   void playback.refreshTracks();
   if (!session.value.isVideo) {
     void playback.refreshCover(session.value.path, session.value.mediaId);
   }
-
-  const win = getCurrentWindow();
-  ui.setFullscreen(await win.isFullscreen());
-  unlistenResize = await win.onResized(() => scheduleSync());
-
-  fsPoll = window.setInterval(async () => {
-    try {
-      const fs = await win.isFullscreen();
-      if (fs !== ui.fullscreen) {
-        ui.setFullscreen(fs);
-        controlsReveal.value = true;
-        if (fs) revealControls();
-        scheduleSync();
-      }
-    } catch {
-      /* ignore */
-    }
-  }, 500);
-
-  // Poll OS cursor for bottom strip while chrome is hidden (no HWND region hole).
-  cursorPoll = window.setInterval(async () => {
-    if (!fullscreen.value || controlsReveal.value || tracksOpen.value) return;
-    try {
-      const near = await invoke<boolean>("cursor_in_stage_bottom", { stripCssPx: 72 });
-      if (near) revealControls();
-    } catch {
-      /* ignore */
-    }
-  }, 120);
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener("resize", scheduleSync);
-  window.clearTimeout(hideTimer);
-  window.clearInterval(fsPoll);
-  window.clearInterval(cursorPoll);
-  cancelAnimationFrame(raf);
-  unlistenResize?.();
+  window.clearTimeout(clickTimer);
   void playback.tearDownVideoSurface();
 });
-
-watch(
-  () => [ui.sidebarMode, tracksOpen.value, fullscreen.value, controlsReveal.value, uiHidden.value],
-  () => scheduleSync(),
-);
 </script>
 
 <template>
@@ -219,69 +136,27 @@ watch(
     <div
       ref="stageEl"
       class="stage-surface"
-      @dblclick="toggleFullscreen"
+      @click="onStageClick"
+      @dblclick="onStageDblClick"
+      @wheel="onStageWheel"
       @mousemove="onStageMove"
     >
       <div v-if="isMusic" class="music-stage">
         <img v-if="coverSrc" class="music-art" :src="coverSrc" alt="" />
         <div v-else class="music-art music-art--empty" />
-        <strong>{{ session.title }}</strong>
-        <span>{{ session.subtitle }}</span>
+        <strong class="music-title">{{ session.title }}</strong>
+        <span class="music-subtitle">{{ session.subtitle }}</span>
       </div>
     </div>
 
-    <div
+    <TracksSheet
       v-if="tracksOpen && chromeVisible"
-      class="tracks-sheet is-open"
-      role="dialog"
-      :aria-label="t('player.tracks')"
-    >
-      <div class="tracks-tabs">
-        <button
-          v-if="!isMusic"
-          type="button"
-          :aria-selected="trackTab === 'video'"
-          @click="openTab('video')"
-        >
-          {{ t("player.video") }}
-        </button>
-        <button type="button" :aria-selected="trackTab === 'audio'" @click="openTab('audio')">
-          {{ t("player.audio") }}
-        </button>
-        <button
-          v-if="!isMusic"
-          type="button"
-          :aria-selected="trackTab === 'subs'"
-          @click="openTab('subs')"
-        >
-          {{ t("player.subs") }}
-        </button>
-      </div>
-      <div class="tracks-body">
-        <button
-          v-if="trackTab === 'subs'"
-          type="button"
-          class="track-row"
-          :data-on="selectedId < 0 || undefined"
-          @click="playback.setTrack('spu', -1)"
-        >
-          {{ t("player.off") }}
-        </button>
-        <button
-          v-for="[id, label] in sheetTracks"
-          :key="id"
-          type="button"
-          class="track-row"
-          :data-on="selectedId === id || undefined"
-          @click="playback.setTrack(trackTab === 'subs' ? 'spu' : trackTab, id)"
-        >
-          {{ label }}
-        </button>
-        <p v-if="!sheetTracks.length && trackTab !== 'subs'" class="empty">
-          {{ t("player.noTracks") }}
-        </p>
-      </div>
-    </div>
+      :tracks="tracks"
+      :track-tab="trackTab"
+      :is-music="isMusic"
+      @select-tab="openTab"
+      @set-track="(kind, id) => playback.setTrack(kind, id)"
+    />
 
     <div
       ref="controlsEl"
@@ -297,7 +172,7 @@ watch(
             type="button"
             class="icon-btn"
             :aria-label="t('player.back10')"
-            @click="playback.seekRelative(-10000)"
+            @click="playback.seekRelative(-skipShortMs)"
           >
             <AppIcon name="backward-10-sec" :size="18" />
           </button>
@@ -330,7 +205,7 @@ watch(
             type="button"
             class="icon-btn"
             :aria-label="t('player.fwd10')"
-            @click="playback.seekRelative(10000)"
+            @click="playback.seekRelative(skipShortMs)"
           >
             <AppIcon name="forward-10-sec" :size="18" />
           </button>
@@ -338,8 +213,8 @@ watch(
 
         <span class="time elapsed">{{ formatDuration(session.timeMs) }}</span>
         <SeekBar
-          :value="session.position"
-          @seek="playback.seek($event)"
+          :model-value="session.position"
+          @update:model-value="playback.seek($event)"
           @scrub-start="playback.beginScrub()"
           @scrub-end="playback.endScrub()"
         />
@@ -348,9 +223,10 @@ watch(
         </button>
 
         <VolumeWedge
-          :value="session.volume"
+          :model-value="session.volume"
           :muted="muted"
-          @change="playback.setVolume($event)"
+          :max-volume="maxVolume"
+          @update:model-value="playback.setVolume($event)"
           @toggle-mute="playback.toggleMute()"
         />
 
@@ -429,7 +305,7 @@ watch(
   align-items: center;
   justify-content: center;
   gap: 12px;
-  background: #0b0b0b;
+  background: var(--player-void);
   padding: 24px;
   text-align: center;
 }
@@ -438,16 +314,16 @@ watch(
   height: min(280px, 40vw);
   object-fit: cover;
   border-radius: 8px;
-  background: #151515;
+  background: var(--player-art-empty);
 }
 .music-art--empty {
-  background: radial-gradient(circle at 40% 35%, #2a1c0e, #151515 70%);
+  background: radial-gradient(circle at 40% 35%, var(--player-art-glow), var(--player-art-empty) 70%);
 }
-.music-stage strong {
+.music-title {
   font-size: 18px;
   font-weight: 600;
 }
-.music-stage span {
+.music-subtitle {
   color: var(--muted);
   font-size: 13px;
 }

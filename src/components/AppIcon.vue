@@ -1,14 +1,11 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-const props = withDefaults(
-  defineProps<{
-    name: string;
-    variant?: "default" | "active" | "twotone";
-    size?: number;
-  }>(),
-  { variant: "default", size: 18 },
-);
+const { name, variant = "default", size = 18 } = defineProps<{
+  name: string;
+  variant?: "default" | "active" | "twotone";
+  size?: number;
+}>();
 
 const modules = import.meta.glob("../assets/icons/*.svg", {
   eager: true,
@@ -16,11 +13,11 @@ const modules = import.meta.glob("../assets/icons/*.svg", {
   import: "default",
 }) as Record<string, string>;
 
-function resolveKey(base: string, variant: string): string | null {
+function resolveKey(base: string, v: string): string | null {
   const candidates =
-    variant === "active"
+    v === "active"
       ? [`${base}-active`, base]
-      : variant === "twotone"
+      : v === "twotone"
         ? [`${base}-twotone`, base]
         : [base];
   for (const c of candidates) {
@@ -31,12 +28,13 @@ function resolveKey(base: string, variant: string): string | null {
 }
 
 const svg = computed(() => {
-  const key = resolveKey(props.name, props.variant);
+  const key = resolveKey(name, variant);
   return key ? modules[key] : "";
 });
 </script>
 
 <template>
+  <!-- trusted local SVG assets only — never pass user/remote HTML here -->
   <span
     class="app-icon"
     :style="{ width: `${size}px`, height: `${size}px` }"

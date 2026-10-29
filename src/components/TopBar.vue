@@ -8,7 +8,7 @@ import WindowControls from "./WindowControls.vue";
 
 const { t } = useI18n();
 const ui = useUiStore();
-const { crumbKey, sideToggleState, fullscreen } = storeToRefs(ui);
+const { sideToggleState, fullscreen } = storeToRefs(ui);
 </script>
 
 <template>
@@ -21,10 +21,10 @@ const { crumbKey, sideToggleState, fullscreen } = storeToRefs(ui);
         :aria-expanded="sideToggleState === 'max'"
         :aria-label="
           sideToggleState === 'max'
-            ? 'Collapse sidebar'
+            ? t('shell.collapseSidebar')
             : sideToggleState === 'min'
-              ? 'Hide sidebar'
-              : 'Show sidebar'
+              ? t('shell.hideSidebar')
+              : t('shell.showSidebar')
         "
         @click="ui.cycleSidebar()"
       >
@@ -41,7 +41,7 @@ const { crumbKey, sideToggleState, fullscreen } = storeToRefs(ui);
       <span class="brand-mark" aria-hidden="true">
         <img :src="markUrl" alt="" width="22" height="22" />
       </span>
-      <span class="crumb">{{ t(crumbKey) }}</span>
+      <span class="app-title">{{ t("app.name") }}</span>
     </div>
     <div class="topbar-center">
       <NowBar />

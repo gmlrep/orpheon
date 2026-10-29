@@ -64,7 +64,8 @@ export interface AppSettings {
   resume_playback: boolean;
   language: string;
   vlc_options: string[];
-  prefs: Record<string, unknown>;
+  /** VLC-aligned Tools → Preferences bag (see Rust `Prefs`). */
+  prefs: Record<string, string | number | boolean | null | undefined>;
 }
 
 export interface PlaybackTick {

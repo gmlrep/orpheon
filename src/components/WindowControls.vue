@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import AppIcon from "./AppIcon.vue";
 
+const { t } = useI18n();
 const win = getCurrentWindow();
 
 async function minimize() {
@@ -17,13 +19,13 @@ async function close() {
 
 <template>
   <div class="win-btns">
-    <button type="button" class="icon-btn" aria-label="Minimize" @click="minimize">
+    <button type="button" class="icon-btn" :aria-label="t('shell.minimize')" @click="minimize">
       <AppIcon name="minimize" :size="14" />
     </button>
-    <button type="button" class="icon-btn" aria-label="Maximize" @click="toggleMax">
+    <button type="button" class="icon-btn" :aria-label="t('shell.maximize')" @click="toggleMax">
       <AppIcon name="maximize" :size="14" />
     </button>
-    <button type="button" class="icon-btn win-close" aria-label="Close" @click="close">
+    <button type="button" class="icon-btn win-close" :aria-label="t('shell.close')" @click="close">
       <AppIcon name="close" :size="14" />
     </button>
   </div>
@@ -38,7 +40,7 @@ async function close() {
   height: 32px;
 }
 .win-close:hover {
-  background: #e5566f !important;
-  color: #fff !important;
+  background: var(--close-hover-bg) !important;
+  color: var(--close-hover-ink) !important;
 }
 </style>

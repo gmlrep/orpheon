@@ -1,7 +1,10 @@
 //! Periodic playback status emitter (~30 Hz).
 
+use crate::constants::{
+    END_MIN_LENGTH_MS, END_POSITION_THRESHOLD, END_TIME_SLACK_MS, PLAYBACK_POLL_INTERVAL,
+    RESUME_PERSIST_INTERVAL,
+};
 use crate::state::{AppState, PlaybackTick};
-use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
 /// Spawn a background thread that emits `playback://tick` events.
@@ -17,7 +20,7 @@ fn poll_loop(app: AppHandle) {
     let mut was_playing = false;
     let mut duration_saved_for: Option<i64> = None;
     loop {
-        std::thread::sleep(Duration::from_millis(33));
+        std::thread::sleep(PLAYBACK_POLL_INTERVAL);
 
         let Some(state) = app.try_state::<AppState>() else {
             continue;
@@ -60,8 +63,9 @@ fn poll_loop(app: AppHandle) {
 
                 let ended = was_playing
                     && !playing
-                    && length_ms > 1000
-                    && (position >= 0.98 || time_ms + 250 >= length_ms);
+                    && length_ms > END_MIN_LENGTH_MS
+                    && (position >= END_POSITION_THRESHOLD
+                        || time_ms + END_TIME_SLACK_MS >= length_ms);
 
                 if let Ok(mut s) = state.session.lock() {
                     if s.active {
@@ -83,7 +87,7 @@ fn poll_loop(app: AppHandle) {
 
                 was_playing = playing;
 
-                if last_persist.elapsed() > Duration::from_secs(5) {
+                if last_persist.elapsed() > RESUME_PERSIST_INTERVAL {
                     crate::commands::persist_resume(&state);
                     last_persist = std::time::Instant::now();
                 }
@@ -102,6 +106,8 @@ fn handle_video_hotkeys(app: &AppHandle, state: &AppState) {
     use crate::commands::persist_resume;
     use crate::video_embed::{VideoEmbed, VideoHotkey};
 
+    let media_only = state.load_settings().prefs.hotkey_profile == "Media keys";
+
     if VideoEmbed::take_space_pause() {
         let _ = state.player.with_mut(|p| p.play_pause());
     }
@@ -109,7 +115,7 @@ fn handle_video_hotkeys(app: &AppHandle, state: &AppState) {
         VideoHotkey::PlayPause => {
             let _ = state.player.with_mut(|p| p.play_pause());
         }
-        VideoHotkey::Stop => {
+        VideoHotkey::Stop if !media_only => {
             persist_resume(state);
             let _ = state.player.with(|p| p.stop());
             if let Ok(mut s) = state.session.lock() {
@@ -136,10 +142,10 @@ fn handle_video_hotkeys(app: &AppHandle, state: &AppState) {
         VideoHotkey::Previous => {
             let _ = app.emit("playback://hotkey", "previous");
         }
-        VideoHotkey::Miniplayer => {
+        VideoHotkey::Miniplayer if !media_only => {
             let _ = app.emit("playback://hotkey", "minimize");
         }
-        VideoHotkey::ToggleUiHidden => {
+        VideoHotkey::ToggleUiHidden if !media_only => {
             let _ = app.emit("playback://hotkey", "toggleUi");
         }
         _ => {}

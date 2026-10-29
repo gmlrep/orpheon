@@ -7,10 +7,12 @@ import { usePlaybackStore } from "../stores/playback";
 import MediaThumb from "../components/MediaThumb.vue";
 import type { MediaItem } from "../types";
 
+defineOptions({ name: "PlaylistsView" });
+
 const { t } = useI18n();
 const library = useLibraryStore();
 const playback = usePlaybackStore();
-const { playlists } = storeToRefs(library);
+const { playlists, pending } = storeToRefs(library);
 const selectedId = ref<number | null>(null);
 const items = ref<MediaItem[]>([]);
 
@@ -19,7 +21,7 @@ onMounted(() => {
 });
 
 async function create() {
-  const name = window.prompt("Playlist name");
+  const name = window.prompt(t("playlists.namePrompt"));
   if (!name?.trim()) return;
   const p = await library.createPlaylist(name.trim());
   selectedId.value = p.id;
@@ -38,6 +40,10 @@ async function remove(id: number) {
     items.value = [];
   }
 }
+
+function playItem(item: MediaItem, idx: number) {
+  void playback.playMediaItem(item, items.value, idx);
+}
 </script>
 
 <template>
@@ -49,34 +55,28 @@ async function remove(id: number) {
       <button type="button" class="btn-primary" @click="create">{{ t("playlists.new") }}</button>
     </div>
 
-    <p v-if="!playlists.length" class="empty">{{ t("playlists.empty") }}</p>
+    <p v-if="pending.playlists && !playlists.length" class="empty">{{ t("common.loading") }}</p>
+    <p v-else-if="!playlists.length" class="empty">{{ t("playlists.empty") }}</p>
 
     <div v-else class="settings-layout">
       <div class="list-rows">
-        <div v-for="p in playlists" :key="p.id" class="row" style="justify-content: space-between">
-          <button type="button" style="flex: 1; text-align: left" @click="select(p.id)">
+        <div v-for="p in playlists" :key="p.id" class="playlist-row">
+          <button type="button" class="playlist-select" @click="select(p.id)">
             <strong>{{ p.name }}</strong>
           </button>
-          <button type="button" class="btn-ghost" @click="remove(p.id)">Delete</button>
+          <button type="button" class="btn-ghost" @click="remove(p.id)">
+            {{ t("playlists.delete") }}
+          </button>
         </div>
       </div>
       <div>
-        <div v-if="selectedId == null" class="empty">Select a playlist</div>
+        <div v-if="selectedId == null" class="empty">{{ t("playlists.select") }}</div>
         <div v-else class="list-rows">
           <button
             v-for="(item, idx) in items"
             :key="item.id"
             type="button"
-            @click="
-              playback.playPath(item.path, {
-                title: item.title,
-                mediaId: item.id,
-                isVideo: item.media_type !== 'audio',
-                artworkPath: item.artwork_path,
-                queue: playback.mediaToQueue(items, item.media_type !== 'audio'),
-                queueIndex: idx,
-              })
-            "
+            @click="playItem(item, idx)"
           >
             <span class="thumb" :class="{ square: item.media_type === 'audio' }">
               <MediaThumb
@@ -93,9 +93,22 @@ async function remove(id: number) {
               <span>{{ item.path }}</span>
             </span>
           </button>
-          <p v-if="!items.length" class="empty">Empty playlist</p>
+          <p v-if="!items.length" class="empty">{{ t("playlists.emptyItems") }}</p>
         </div>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.playlist-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.playlist-select {
+  flex: 1;
+  text-align: left;
+}
+</style>

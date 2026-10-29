@@ -1,46 +1,30 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, shallowRef, watch } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { toneFor } from "../utils/format";
+import { enqueueArt } from "../utils/artQueue";
 
-const props = withDefaults(
-  defineProps<{
-    title: string;
-    seed?: string | number;
-    path?: string;
-    mediaId?: number | null;
-    artworkPath?: string | null;
-    wide?: boolean;
-    progress?: number;
-  }>(),
-  { wide: true, progress: undefined, mediaId: null, artworkPath: null },
-);
+const {
+  title,
+  seed,
+  path,
+  mediaId = null,
+  artworkPath = null,
+  wide = true,
+  progress,
+} = defineProps<{
+  title: string;
+  seed?: string | number;
+  path?: string;
+  mediaId?: number | null;
+  artworkPath?: string | null;
+  wide?: boolean;
+  progress?: number;
+}>();
 
-const src = ref<string | null>(null);
-const failed = ref(false);
-const palette = computed(() => toneFor(props.seed ?? props.title));
-
-/** Limit concurrent VLC/ffmpeg thumbnail jobs so opening a list doesn't spawn dozens. */
-const artQueue: Array<() => void> = [];
-let artRunning = 0;
-const ART_MAX = 2;
-
-function enqueueArt<T>(job: () => Promise<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const run = () => {
-      artRunning++;
-      job()
-        .then(resolve, reject)
-        .finally(() => {
-          artRunning--;
-          const next = artQueue.shift();
-          if (next) next();
-        });
-    };
-    if (artRunning < ART_MAX) run();
-    else artQueue.push(run);
-  });
-}
+const src = shallowRef<string | null>(null);
+const failed = shallowRef(false);
+const palette = computed(() => toneFor(seed ?? title));
 
 function toSrc(filePath: string): string {
   return convertFileSrc(filePath.replace(/\\/g, "/"));
@@ -48,30 +32,28 @@ function toSrc(filePath: string): string {
 
 async function load() {
   failed.value = false;
-  src.value = null;
-  if (props.path) {
-    try {
-      const art = await enqueueArt(() =>
-        invoke<string | null>("resolve_artwork", {
-          path: props.path,
-          mediaId: props.mediaId ?? null,
-        }),
-      );
-      if (art) {
-        src.value = toSrc(art);
-        return;
-      }
-    } catch {
-      /* fall through */
-    }
+  // Prefer DB/cached art immediately — never block the grid on ffmpeg/VLC generate.
+  if (artworkPath) {
+    src.value = toSrc(artworkPath);
+    return;
   }
-  if (props.artworkPath) {
-    src.value = toSrc(props.artworkPath);
+  src.value = null;
+  if (!path) return;
+  try {
+    const art = await enqueueArt(() =>
+      invoke<string | null>("resolve_artwork", {
+        path,
+        mediaId: mediaId ?? null,
+      }),
+    );
+    if (art) src.value = toSrc(art);
+  } catch {
+    /* keep placeholder */
   }
 }
 
 onMounted(load);
-watch(() => [props.path, props.artworkPath, props.mediaId], load);
+watch(() => [path, artworkPath, mediaId], load);
 </script>
 
 <template>
@@ -92,7 +74,7 @@ watch(() => [props.path, props.artworkPath, props.mediaId], load);
   width: 100%;
   aspect-ratio: 16 / 9;
   overflow: hidden;
-  background: #151515;
+  background: var(--thumb-bg);
 }
 .art.square {
   aspect-ratio: 1;
@@ -121,7 +103,7 @@ watch(() => [props.path, props.artworkPath, props.mediaId], load);
   right: 0;
   bottom: 0;
   height: 3px;
-  background: #2a2a2a;
+  background: var(--switch-track);
 }
 .progress > i {
   display: block;

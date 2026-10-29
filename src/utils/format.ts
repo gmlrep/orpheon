@@ -18,7 +18,8 @@ export function initials(title: string): string {
     .toUpperCase();
 }
 
-const PALETTES: [string, string, string][] = [
+/** Placeholder art tones when cover is missing — mirrors brand accents loosely. */
+export const PLACEHOLDER_PALETTES: [string, string, string][] = [
   ["#2a1c0e", "#d37918", "#1a1008"],
   ["#142028", "#6a9bb8", "#0c1218"],
   ["#1e1410", "#c4a574", "#120c08"],
@@ -26,6 +27,8 @@ const PALETTES: [string, string, string][] = [
   ["#101818", "#5a9a78", "#080e0c"],
   ["#181410", "#d4b060", "#0e0a06"],
 ];
+
+const PALETTES = PLACEHOLDER_PALETTES;
 
 export function toneFor(key: string | number): [string, string, string] {
   const n = typeof key === "number" ? key : hash(key);

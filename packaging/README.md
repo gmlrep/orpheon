@@ -19,7 +19,7 @@ $exe = Get-ChildItem -Recurse src-tauri\target\release\Orpheon.exe | Select-Obje
 
 ## CI / GitHub Releases
 
-- **CI** (`.github/workflows/ci.yml`): on `push`/`pull_request` to `main`/`master` — typecheck, `cargo test`, Tauri Windows build, portable artifact upload.
+- **CI** (`.github/workflows/ci.yml`): on `push`/`pull_request` to `main`/`master` — typecheck, Vitest (`npm run test:run`), `cargo test`, Tauri Windows build, portable artifact upload.
 - **Release** (`.github/workflows/release.yml`): on tag `v*` (e.g. `git tag v0.1.0 && git push origin v0.1.0`) — builds Windows portable zip (+ MSI/NSIS if produced) and publishes a GitHub Release.
 
 CI prepares `vendor/vlc` via `scripts/ci-prepare-vlc.ps1` (system VLC or VideoLAN win64 zip).

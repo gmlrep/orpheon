@@ -68,7 +68,7 @@
   right: 0;
   bottom: 0;
   z-index: 20;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.85) 35%);
+  background: linear-gradient(transparent, var(--overlay-scrim) 35%);
   border-top: 0;
 }
 .app-window[data-fullscreen="true"] .player-controls.is-hidden {
@@ -76,9 +76,10 @@
   pointer-events: none;
   transform: translateY(10px);
 }
-.crumb {
+.app-title {
   font-size: 13px;
-  color: var(--muted);
+  font-weight: 600;
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -125,7 +126,7 @@
   height: 28px;
   flex: none;
   border-radius: var(--radius-control);
-  color: #8f8f8f;
+  color: var(--chrome-faint);
   padding: 0;
 }
 .side-toggle:hover {
@@ -204,7 +205,7 @@
   right: 0;
   bottom: 0;
   height: 2px;
-  background: #2a2a2a;
+  background: var(--switch-track);
 }
 .now-bar .thumb .prog > i {
   display: block;
@@ -285,42 +286,14 @@
   height: 100%;
   min-width: 0;
 }
-.product {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 8px 16px;
-  min-width: 0;
-}
-.product .logo {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  overflow: hidden;
-  flex: none;
-}
-.product .logo img {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-.product-name {
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-.product-name span {
-  display: block;
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--faint);
-}
 .nav-group {
   margin: 14px 8px 6px;
   font-size: var(--fs-small);
   color: var(--faint);
   white-space: nowrap;
+}
+.nav-group:first-child {
+  margin-top: 4px;
 }
 .nav a {
   display: flex;
@@ -329,7 +302,7 @@
   height: var(--nav-row);
   padding: 0 8px;
   border-radius: 8px;
-  color: #bbb;
+  color: var(--chrome-muted);
   transition:
     background var(--t-hover) ease,
     color var(--t-hover) ease;
@@ -341,21 +314,15 @@
 }
 .nav a[aria-current="page"] {
   background: var(--active);
-  color: #fff;
+  color: var(--text);
 }
 .nav-label {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .app-window[data-sidebar="rail"] .nav-label,
-.app-window[data-sidebar="rail"] .product-name,
 .app-window[data-sidebar="rail"] .nav-group {
   display: none;
-}
-.app-window[data-sidebar="rail"] .product {
-  justify-content: center;
-  padding-left: 0;
-  padding-right: 0;
 }
 .app-window[data-sidebar="rail"] .nav a {
   justify-content: center;
@@ -372,7 +339,7 @@
   padding: var(--pad);
   background: var(--ground);
   scrollbar-width: thin;
-  scrollbar-color: #2a2a2a transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 .canvas::-webkit-scrollbar {
   width: 8px;
@@ -382,13 +349,13 @@
   background: transparent;
 }
 .canvas::-webkit-scrollbar-thumb {
-  background: #2a2a2a;
+  background: var(--switch-track);
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 .canvas::-webkit-scrollbar-thumb:hover {
-  background: #3a3a3a;
+  background: var(--scrollbar-thumb-hover);
   background-clip: padding-box;
   border: 2px solid transparent;
 }
@@ -493,7 +460,7 @@
 }
 .resume-card .art {
   aspect-ratio: 16 / 9;
-  background: #151515;
+  background: var(--thumb-bg);
   position: relative;
   overflow: hidden;
 }
@@ -503,7 +470,7 @@
   right: 0;
   bottom: 0;
   height: 3px;
-  background: #2a2a2a;
+  background: var(--switch-track);
 }
 .resume-card .art .progress > i {
   display: block;
@@ -637,19 +604,19 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #000;
+  background: var(--player-void);
 }
 .stage-surface {
   flex: 1;
   min-height: 0;
   position: relative;
-  background: #000;
+  background: var(--player-void);
 }
 .player-controls {
   flex: none;
   height: var(--controls-h);
   padding: 0 20px;
-  background: #191919;
+  background: var(--raised);
   border-top: 1px solid var(--border);
   position: relative;
   z-index: 2;
@@ -722,12 +689,12 @@
   max-height: min(420px, calc(100% - var(--controls-h) - 48px));
   display: none;
   flex-direction: column;
-  background: #191919;
+  background: var(--raised);
   border: 1px solid var(--control);
   border-radius: 10px;
   overflow: hidden;
   z-index: 20;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow-float);
 }
 .tracks-sheet.is-open {
   display: flex;
@@ -761,7 +728,7 @@
   padding: 8px 0 12px;
   min-height: 0;
   scrollbar-width: thin;
-  scrollbar-color: #2a2a2a transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 .track-row {
   display: flex;
@@ -801,12 +768,12 @@
   text-align: left;
   padding: 8px 10px;
   border-radius: 8px;
-  color: #bbb;
+  color: var(--chrome-muted);
   font-size: 13px;
 }
 .settings-nav button[aria-current="true"] {
-  background: var(--active);
-  color: #fff;
+  background: var(--seg-active-bg);
+  color: var(--seg-active-ink);
 }
 .settings-page h2 {
   font-size: 18px;
@@ -829,47 +796,36 @@
   font-size: 12px;
   color: var(--faint);
 }
-.switch {
-  width: 40px;
-  height: 22px;
-  border-radius: 999px;
-  background: var(--control);
-  position: relative;
-  flex: none;
+.settings-block {
+  margin-top: 20px;
 }
-.switch[aria-checked="true"] {
-  background: var(--primary);
+.settings-block.is-first {
+  margin-top: 0;
 }
-.switch > i {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #fff;
-  transition: transform var(--t-hover) var(--ease);
+.settings-section {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--faint);
+  margin: 0 0 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
-.switch[aria-checked="true"] > i {
-  transform: translateX(18px);
+.settings-row .label span {
+  max-width: 42ch;
+  line-height: 1.35;
 }
-.seg {
-  display: inline-flex;
-  background: var(--surface);
+.settings-advanced {
+  margin-top: 24px;
+  height: 38px;
+  width: 100%;
   border-radius: 8px;
-  padding: 3px;
-  gap: 2px;
-}
-.seg button {
-  height: 28px;
-  padding: 0 12px;
-  border-radius: 6px;
+  background: var(--raised);
   color: var(--muted);
-  font-size: 12px;
-}
-.seg button[aria-pressed="true"] {
-  background: var(--active);
-  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  font-size: 14px;
 }
 
 .phone-tabs {
@@ -889,7 +845,7 @@
   color: var(--muted);
 }
 .phone-tabs a[aria-current="page"] {
-  color: #fff;
+  color: var(--text);
 }
 
 .empty {
