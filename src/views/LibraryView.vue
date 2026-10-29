@@ -31,8 +31,7 @@ const sorted = computed(() => {
   if (props.kind === "video") {
     const key = videoSort.value;
     if (key === "title") copy.sort((a, b) => a.title.localeCompare(b.title));
-    else if (key === "duration")
-      copy.sort((a, b) => (a.duration_ms ?? 0) - (b.duration_ms ?? 0));
+    else if (key === "duration") copy.sort((a, b) => (a.duration_ms ?? 0) - (b.duration_ms ?? 0));
     else copy.sort((a, b) => b.id - a.id);
   } else {
     const key = musicSort.value;
@@ -85,6 +84,26 @@ async function addFolder() {
 
 function playItem(item: MediaItem) {
   void playback.playMediaItem(item, sorted.value);
+}
+
+async function addToPlaylist(item: MediaItem, ev: Event) {
+  ev.stopPropagation();
+  await library.loadPlaylists();
+  let playlistId = library.playlists[0]?.id;
+  if (!library.playlists.length) {
+    const name = window.prompt(t("playlists.namePrompt"));
+    if (!name?.trim()) return;
+    const p = await library.createPlaylist(name.trim());
+    playlistId = p.id;
+  } else if (library.playlists.length > 1) {
+    const lines = library.playlists.map((p, i) => `${i + 1}. ${p.name}`).join("\n");
+    const choice = window.prompt(`${t("playlists.pickPrompt")}\n${lines}`, "1");
+    if (!choice) return;
+    const idx = Math.max(0, Number.parseInt(choice, 10) - 1);
+    playlistId = library.playlists[idx]?.id ?? playlistId;
+  }
+  if (playlistId == null) return;
+  await library.addToPlaylist(playlistId, item.id);
 }
 
 function playFirst() {
@@ -187,6 +206,14 @@ const musicSortOpts = [
                 <strong>{{ item.title }}</strong>
                 <span>{{ item.path }}</span>
               </span>
+              <button
+                type="button"
+                class="btn-ghost add-pl"
+                :aria-label="t('playlists.add')"
+                @click="addToPlaylist(item, $event)"
+              >
+                {{ t("playlists.add") }}
+              </button>
             </div>
           </td>
           <td class="dur">{{ formatDuration(item.duration_ms) }}</td>
@@ -220,5 +247,13 @@ const musicSortOpts = [
 }
 .dur-col {
   width: 90px;
+}
+.add-pl {
+  flex: none;
+  margin-left: auto;
+  opacity: 0.7;
+}
+.media-row:hover .add-pl {
+  opacity: 1;
 }
 </style>

@@ -15,8 +15,10 @@ describe("useCoverSrc", () => {
     expect(src.value).toBe("asset://localhost/C:/Music/cover.jpg");
   });
 
-  it("passes through remote http(s) URLs", () => {
+  it("passes through remote http(s) URLs only", () => {
     expect(resolveMediaSrc("https://cdn.example/art.png")).toBe("https://cdn.example/art.png");
     expect(resolveMediaSrc("http://station/logo.jpg")).toBe("http://station/logo.jpg");
+    expect(resolveMediaSrc("data:image/png;base64,xx")).toBeNull();
+    expect(resolveMediaSrc("file:///C:/a.png")).toBeNull();
   });
 });

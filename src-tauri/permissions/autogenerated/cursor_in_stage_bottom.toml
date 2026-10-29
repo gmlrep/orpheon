@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cursor-in-stage-bottom"
+description = "Enables the cursor_in_stage_bottom command without any pre-configured scope."
+commands.allow = ["cursor_in_stage_bottom"]
+
+[[permission]]
+identifier = "deny-cursor-in-stage-bottom"
+description = "Denies the cursor_in_stage_bottom command without any pre-configured scope."
+commands.deny = ["cursor_in_stage_bottom"]

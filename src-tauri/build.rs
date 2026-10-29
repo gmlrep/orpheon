@@ -1,7 +1,53 @@
 use std::path::{Path, PathBuf};
 
+/// Commands exposed via `invoke_handler` — each gets `allow-*` / `deny-*` ACL entries.
+const APP_COMMANDS: &[&str] = &[
+    "engine_status",
+    "play_path",
+    "play_mrl",
+    "list_saved_streams",
+    "save_stream",
+    "remove_saved_stream",
+    "play_pause",
+    "stop_playback",
+    "seek",
+    "seek_relative",
+    "set_volume",
+    "track_snapshot",
+    "set_track",
+    "apply_equalizer",
+    "list_media",
+    "list_recent_media",
+    "list_folders",
+    "add_library_folder",
+    "rescan_library",
+    "list_playlists",
+    "create_playlist",
+    "delete_playlist",
+    "rename_playlist",
+    "playlist_items",
+    "add_to_playlist",
+    "continue_watching",
+    "touch_recent",
+    "get_settings",
+    "save_settings",
+    "set_theme",
+    "set_language",
+    "clear_history",
+    "update_stage_rect",
+    "set_overlay_holes",
+    "ensure_video_surface",
+    "hide_video_surface",
+    "cursor_in_stage_bottom",
+    "resolve_artwork",
+];
+
 fn main() {
-    tauri_build::build();
+    tauri_build::try_build(
+        tauri_build::Attributes::new()
+            .app_manifest(tauri_build::AppManifest::new().commands(APP_COMMANDS)),
+    )
+    .expect("tauri-build failed");
 
     // Copy vendored libVLC next to the binary so Windows finds DLLs at process start
     // (STATUS_DLL_NOT_FOUND happens before Rust `main` can fix PATH).

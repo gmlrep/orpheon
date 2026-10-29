@@ -43,11 +43,7 @@ async function browse() {
 
 <template>
   <div class="path-picker">
-    <SettingsTextField
-      v-model="model"
-      :label="label"
-      :placeholder="placeholder"
-    />
+    <SettingsTextField v-model="model" :label="label" :placeholder="placeholder" />
     <GhostButton :label="browseLabel ?? t('common.browse')" @click="browse">
       {{ browseLabel ?? t("common.browse") }}
     </GhostButton>

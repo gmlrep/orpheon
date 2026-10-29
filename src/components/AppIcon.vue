@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-const { name, variant = "default", size = 18 } = defineProps<{
+const {
+  name,
+  variant = "default",
+  size = 18,
+} = defineProps<{
   name: string;
   variant?: "default" | "active" | "twotone";
   size?: number;
@@ -38,8 +42,8 @@ const svg = computed(() => {
   <span
     class="app-icon"
     :style="{ width: `${size}px`, height: `${size}px` }"
-    v-html="svg"
     aria-hidden="true"
+    v-html="svg"
   />
 </template>
 

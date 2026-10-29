@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-play-mrl"
+description = "Enables the play_mrl command without any pre-configured scope."
+commands.allow = ["play_mrl"]
+
+[[permission]]
+identifier = "deny-play-mrl"
+description = "Denies the play_mrl command without any pre-configured scope."
+commands.deny = ["play_mrl"]

@@ -122,6 +122,10 @@ export const useLibraryStore = defineStore("library", () => {
     return invoke<MediaItem[]>("playlist_items", { id });
   }
 
+  async function addToPlaylist(playlistId: number, mediaId: number) {
+    await invoke("add_to_playlist", { playlistId, mediaId });
+  }
+
   return {
     videos,
     music,
@@ -146,5 +150,6 @@ export const useLibraryStore = defineStore("library", () => {
     createPlaylist,
     deletePlaylist,
     playlistItems,
+    addToPlaylist,
   };
 });

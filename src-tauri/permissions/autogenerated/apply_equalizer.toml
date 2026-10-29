@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-apply-equalizer"
+description = "Enables the apply_equalizer command without any pre-configured scope."
+commands.allow = ["apply_equalizer"]
+
+[[permission]]
+identifier = "deny-apply-equalizer"
+description = "Denies the apply_equalizer command without any pre-configured scope."
+commands.deny = ["apply_equalizer"]

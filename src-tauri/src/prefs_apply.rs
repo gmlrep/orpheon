@@ -1,7 +1,7 @@
 //! Map persisted prefs onto a live [`PlayerService`] / media open options.
 
-use crate::pref_units::parse_seconds;
 use crate::player_service::PlayerService;
+use crate::pref_units::parse_seconds;
 use settings::{AppSettings, ContinueMode, Prefs};
 
 /// Build media-level options applied at open (deinterlace, subtitles, …).
@@ -33,16 +33,34 @@ pub fn media_options_from_prefs(prefs: &Prefs) -> Vec<String> {
     opts
 }
 
-/// Whether resume-from-position should run for this open.
+/// Whether resume-from-position should apply automatically (Always mode).
 #[must_use]
-pub fn should_resume(settings: &AppSettings) -> bool {
+pub fn should_auto_resume(settings: &AppSettings) -> bool {
     if !settings.resume_playback {
         return false;
     }
-    match settings.prefs.continue_playback_mode() {
-        ContinueMode::Never => false,
-        ContinueMode::Always | ContinueMode::Ask => true,
+    matches!(
+        settings.prefs.continue_playback_mode(),
+        ContinueMode::Always
+    )
+}
+
+/// Whether the UI should ask before seeking to a saved position.
+#[must_use]
+pub fn should_ask_resume(settings: &AppSettings) -> bool {
+    if !settings.resume_playback {
+        return false;
     }
+    matches!(settings.prefs.continue_playback_mode(), ContinueMode::Ask)
+}
+
+/// Whether resume positions should be persisted while playing.
+#[must_use]
+pub fn should_persist_resume(settings: &AppSettings) -> bool {
+    if !settings.resume_playback {
+        return false;
+    }
+    !matches!(settings.prefs.continue_playback_mode(), ContinueMode::Never)
 }
 
 /// Apply session-level prefs that can change without reopening media.
@@ -94,18 +112,19 @@ fn apply_picture(player: &PlayerService, prefs: &Prefs) {
 }
 
 /// Split `extra_cmdline` / `vlc_options` into libVLC argv tokens.
+///
+/// User-supplied tokens are allowlisted; dangerous remote/control interfaces are dropped.
 #[must_use]
 pub fn extra_vlc_args(settings: &AppSettings) -> Vec<String> {
     let mut out = Vec::new();
     for token in settings.prefs.extra_cmdline.split_whitespace() {
-        if !token.is_empty() {
-            out.push(token.to_string());
+        if let Some(safe) = sanitize_vlc_arg(token) {
+            out.push(safe);
         }
     }
     for opt in &settings.vlc_options {
-        let t = opt.trim();
-        if !t.is_empty() {
-            out.push(t.to_string());
+        if let Some(safe) = sanitize_vlc_arg(opt) {
+            out.push(safe);
         }
     }
 
@@ -118,7 +137,6 @@ pub fn extra_vlc_args(settings: &AppSettings) -> Vec<String> {
     let threads = settings
         .prefs
         .decode_threads
-        .trim()
         .split_whitespace()
         .next()
         .unwrap_or("0");
@@ -144,6 +162,61 @@ pub fn extra_vlc_args(settings: &AppSettings) -> Vec<String> {
     out
 }
 
+/// Allow only benign libVLC flags from user prefs (block remote control / script surfaces).
+#[must_use]
+pub fn sanitize_vlc_arg(token: &str) -> Option<String> {
+    let t = token.trim();
+    if t.is_empty() || t.chars().any(|c| c.is_control() || c == '\0') {
+        return None;
+    }
+    if !(t.starts_with("--") || t.starts_with(':')) {
+        log::warn!("rejected VLC arg (must start with -- or :): {t}");
+        return None;
+    }
+    let lower = t.to_ascii_lowercase();
+    if lower.contains("://") {
+        log::warn!("rejected VLC arg (URL): {t}");
+        return None;
+    }
+    const DENY_PREFIXES: &[&str] = &[
+        "--extraintf",
+        "--control",
+        "--intf",
+        "--http-",
+        "--https-",
+        "--telnet-",
+        "--lua",
+        "--vlm",
+        "--pidfile",
+        "--config",
+        "--plugin-path",
+        "--dbus",
+        "--one-instance",
+        "--rtsp-",
+        "--sout",
+    ];
+    for deny in DENY_PREFIXES {
+        if lower == deny.trim_end_matches('-')
+            || lower.starts_with(deny)
+            || lower.starts_with(&format!("{deny}="))
+        {
+            log::warn!("rejected VLC arg: {t}");
+            return None;
+        }
+    }
+    // Media-level options (`:opt`) — block nested URL / file opens.
+    if t.starts_with(':') {
+        const DENY_MEDIA: &[&str] = &[":sout", ":input-slave", ":demux=", ":access="];
+        for deny in DENY_MEDIA {
+            if lower.starts_with(deny) {
+                log::warn!("rejected VLC media arg: {t}");
+                return None;
+            }
+        }
+    }
+    Some(t.to_string())
+}
+
 /// Map settings hw prefs → [`libvlc::HwAccelMode`].
 #[must_use]
 pub fn hw_accel_from_settings(settings: &AppSettings) -> libvlc::HwAccelMode {
@@ -156,5 +229,24 @@ pub fn hw_accel_from_settings(settings: &AppSettings) -> libvlc::HwAccelMode {
         "D3D11" => HwAccelMode::D3D11,
         "DXVA2" => HwAccelMode::Dxva2,
         _ => HwAccelMode::Automatic,
+    }
+}
+
+#[cfg(test)]
+mod sanitize_tests {
+    use super::sanitize_vlc_arg;
+
+    #[test]
+    fn allows_avcodec_threads() {
+        assert_eq!(
+            sanitize_vlc_arg("--avcodec-threads=4").as_deref(),
+            Some("--avcodec-threads=4")
+        );
+    }
+
+    #[test]
+    fn rejects_http_intf() {
+        assert!(sanitize_vlc_arg("--http-host=0.0.0.0").is_none());
+        assert!(sanitize_vlc_arg("--extraintf=http").is_none());
     }
 }

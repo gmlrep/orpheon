@@ -4,7 +4,11 @@ import type { AppSelectOption } from "./appSelectTypes";
 
 const model = defineModel<T>({ required: true });
 
-const { options, label, placeholder = "—" } = defineProps<{
+const {
+  options,
+  label,
+  placeholder = "—",
+} = defineProps<{
   options: AppSelectOption<T>[];
   label?: string;
   placeholder?: string;

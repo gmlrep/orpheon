@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use crate::constants::{
-    ARTWORK_FFMPEG_SEEK_SECS, ARTWORK_LARGE_FILE_BYTES, ARTWORK_MIN_BYTES,
-    ARTWORK_VLC_START_LARGE, ARTWORK_VLC_START_SMALL,
+    ARTWORK_FFMPEG_SEEK_SECS, ARTWORK_LARGE_FILE_BYTES, ARTWORK_MIN_BYTES, ARTWORK_VLC_START_LARGE,
+    ARTWORK_VLC_START_SMALL,
 };
 use crate::process_util;
 use log::debug;
@@ -15,12 +15,18 @@ use log::debug;
 pub const NO_ARTWORK_SENTINEL: &str = ":none";
 
 /// Resolve or generate a thumbnail for `media_path` under `cache_dir`.
+///
+/// Sidecar covers next to media are copied into `cache_dir` so they stay inside
+/// the Tauri asset-protocol scope (`…/artwork/**`).
 pub fn ensure_artwork(media_path: &Path, cache_dir: &Path, media_id: i64) -> Option<PathBuf> {
+    let _ = fs::create_dir_all(cache_dir);
+
     if let Some(sidecar) = find_sidecar_cover(media_path) {
-        return Some(sidecar);
+        if let Some(cached) = copy_sidecar_into_cache(&sidecar, cache_dir, media_id) {
+            return Some(cached);
+        }
     }
 
-    let _ = fs::create_dir_all(cache_dir);
     let cached_jpg = cache_dir.join(format!("{media_id}.jpg"));
     let cached_png = cache_dir.join(format!("{media_id}.png"));
     for candidate in [&cached_jpg, &cached_png] {
@@ -64,6 +70,33 @@ fn is_audio(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .is_some_and(library::is_audio_extension)
+}
+
+fn copy_sidecar_into_cache(sidecar: &Path, cache_dir: &Path, media_id: i64) -> Option<PathBuf> {
+    let ext = sidecar
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("jpg")
+        .to_ascii_lowercase();
+    let dest = cache_dir.join(format!("{media_id}-cover.{ext}"));
+    if dest.is_file() && file_nonempty(&dest) {
+        // Refresh if sidecar is newer than the cached copy.
+        let refresh = match (
+            fs::metadata(sidecar).and_then(|m| m.modified()),
+            fs::metadata(&dest).and_then(|m| m.modified()),
+        ) {
+            (Ok(src), Ok(dst)) => src > dst,
+            _ => false,
+        };
+        if !refresh {
+            return Some(dest);
+        }
+    }
+    if fs::copy(sidecar, &dest).is_ok() && dest.is_file() && file_nonempty(&dest) {
+        Some(dest)
+    } else {
+        None
+    }
 }
 
 fn find_sidecar_cover(media_path: &Path) -> Option<PathBuf> {
@@ -132,14 +165,26 @@ fn find_vlc_exe() -> Option<&'static Path> {
                 candidates.push(dir.join("vlc.exe"));
             }
         }
-        candidates.push(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../vendor/vlc/vlc.exe"),
-        );
+        #[cfg(debug_assertions)]
+        {
+            candidates
+                .push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../vendor/vlc/vlc.exe"));
+        }
         if let Ok(pf) = std::env::var("ProgramFiles") {
-            candidates.push(PathBuf::from(pf).join("VideoLAN").join("VLC").join("vlc.exe"));
+            candidates.push(
+                PathBuf::from(pf)
+                    .join("VideoLAN")
+                    .join("VLC")
+                    .join("vlc.exe"),
+            );
         }
         if let Ok(pf86) = std::env::var("ProgramFiles(x86)") {
-            candidates.push(PathBuf::from(pf86).join("VideoLAN").join("VLC").join("vlc.exe"));
+            candidates.push(
+                PathBuf::from(pf86)
+                    .join("VideoLAN")
+                    .join("VLC")
+                    .join("vlc.exe"),
+            );
         }
         candidates.into_iter().find(|p| p.is_file())
     })

@@ -1,6 +1,6 @@
 [package]
 name = "orpheon"
-version = "0.1.0"
+version = "0.1.1"
 description = "Orpheon — local media player powered by libVLC"
 authors = ["Orpheon Contributors"]
 edition = "2021"

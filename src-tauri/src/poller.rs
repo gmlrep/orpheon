@@ -4,18 +4,15 @@ use crate::constants::{
     END_MIN_LENGTH_MS, END_POSITION_THRESHOLD, END_TIME_SLACK_MS, PLAYBACK_POLL_INTERVAL,
     RESUME_PERSIST_INTERVAL,
 };
-use crate::state::{AppState, PlaybackTick};
-use tauri::{AppHandle, Emitter, Manager};
+use crate::emit_util::emit_logged;
+use crate::state::{AppState, PlaybackTick, SessionInfo};
+use tauri::{AppHandle, Manager};
 
 #[cfg(feature = "vlc")]
-fn apply_stream_meta(
-    session: &mut crate::state::SessionInfo,
-    meta: &libvlc::MediaMetaSnapshot,
-    state: &AppState,
-) {
+fn apply_stream_meta(session: &mut SessionInfo, meta: &libvlc::MediaMetaSnapshot) -> bool {
     let looks_network = session.path.contains("://");
     if !looks_network {
-        return;
+        return false;
     }
 
     let mut changed = false;
@@ -26,15 +23,14 @@ fn apply_stream_meta(
         .filter(|t| !t.is_empty());
     if let Some(title) = display {
         // Prefer live now-playing; otherwise upgrade placeholder URL titles.
-        if meta.now_playing.is_some()
+        if (meta.now_playing.is_some()
             || session.title == session.path
             || session.title.is_empty()
-            || session.title == "Network stream"
+            || session.title == "Network stream")
+            && session.title != title
         {
-            if session.title != title {
-                session.title = title;
-                changed = true;
-            }
+            session.title = title;
+            changed = true;
         }
     }
     if let Some(artist) = meta.artist.clone().filter(|a| !a.is_empty()) {
@@ -43,29 +39,23 @@ fn apply_stream_meta(
             changed = true;
         }
     }
-    if let Some(art) = meta.artwork_url.clone().filter(|a| !a.is_empty()) {
+    if let Some(art) = crate::mrl::sanitize_artwork_url(meta.artwork_url.as_deref()) {
         if session.artwork_url.as_deref() != Some(art.as_str()) {
             session.artwork_url = Some(art);
             changed = true;
         }
     }
-
-    if changed {
-        crate::commands::streams::enrich_saved_stream_meta(
-            state,
-            &session.path,
-            &session.title,
-            session.artwork_url.as_deref(),
-        );
-    }
+    changed
 }
 
 /// Spawn a background thread that emits `playback://tick` events.
 pub fn start_playback_poller(app: AppHandle) {
-    std::thread::Builder::new()
+    if let Err(e) = std::thread::Builder::new()
         .name("playback-poller".into())
         .spawn(move || poll_loop(app))
-        .ok();
+    {
+        log::error!("failed to spawn playback-poller thread: {e}");
+    }
 }
 
 fn poll_loop(app: AppHandle) {
@@ -93,7 +83,7 @@ fn poll_loop(app: AppHandle) {
             if let Some((playing, position, time_ms, length_ms)) = snapshot {
                 // Apply deferred resume once length is known.
                 if length_ms > 0 {
-                    if let Ok(mut pending) = state.pending_seek.lock() {
+                    if let Ok(mut pending) = state.lock_pending_seek() {
                         if let Some(pos) = pending.take() {
                             let _ = state.player.with(|p| p.seek(pos));
                         }
@@ -102,14 +92,13 @@ fn poll_loop(app: AppHandle) {
 
                 // Persist probed duration into the library DB once per media.
                 if length_ms > 0 {
-                    if let Ok(s) = state.session.lock() {
-                        if let Some(mid) = s.media_id {
-                            if duration_saved_for != Some(mid) {
-                                if let Ok(db) = state.library.lock() {
-                                    let _ = db.set_duration_ms(mid, length_ms);
-                                }
-                                duration_saved_for = Some(mid);
+                    let media_id = state.lock_session().ok().and_then(|s| s.media_id);
+                    if let Some(mid) = media_id {
+                        if duration_saved_for != Some(mid) {
+                            if let Ok(db) = state.lock_library() {
+                                let _ = db.set_duration_ms(mid, length_ms);
                             }
+                            duration_saved_for = Some(mid);
                         }
                     }
                 }
@@ -122,25 +111,43 @@ fn poll_loop(app: AppHandle) {
 
                 // Pull ICY / stream metadata when libVLC exposes it.
                 let meta = state.player.with(|p| p.media_meta());
-                if let Ok(mut s) = state.session.lock() {
+
+                // Update session under lock, then emit/persist after releasing it.
+                let mut tick_payload: Option<PlaybackTick> = None;
+                let mut enrich: Option<(String, String, Option<String>)> = None;
+                if let Ok(mut s) = state.lock_session() {
                     if s.active {
                         s.paused = !playing;
                         s.position = position;
                         s.time_ms = time_ms;
                         s.length_ms = length_ms;
-                        if let Some(meta) = meta {
-                            apply_stream_meta(&mut s, &meta, &state);
+                        if let Some(ref meta) = meta {
+                            if apply_stream_meta(&mut s, meta) {
+                                enrich =
+                                    Some((s.path.clone(), s.title.clone(), s.artwork_url.clone()));
+                            }
                         }
-                        let tick = PlaybackTick {
+                        tick_payload = Some(PlaybackTick {
                             session: s.clone(),
                             playing,
-                        };
-                        let _ = app.emit("playback://tick", tick);
+                        });
                     }
                 }
 
+                if let Some((mrl, title, art)) = enrich {
+                    crate::commands::streams::enrich_saved_stream_meta(
+                        &state,
+                        &mrl,
+                        &title,
+                        art.as_deref(),
+                    );
+                }
+                if let Some(tick) = tick_payload {
+                    emit_logged(&app, "playback://tick", tick);
+                }
+
                 if ended {
-                    let _ = app.emit("playback://ended", ());
+                    emit_logged(&app, "playback://ended", ());
                 }
 
                 was_playing = playing;
@@ -154,7 +161,12 @@ fn poll_loop(app: AppHandle) {
 
         #[cfg(not(feature = "vlc"))]
         {
-            let _ = (&state, &last_persist, &mut was_playing, &mut duration_saved_for);
+            let _ = (
+                &state,
+                &last_persist,
+                &mut was_playing,
+                &mut duration_saved_for,
+            );
         }
     }
 }
@@ -176,10 +188,10 @@ fn handle_video_hotkeys(app: &AppHandle, state: &AppState) {
         VideoHotkey::Stop if !media_only => {
             persist_resume(state);
             let _ = state.player.with(|p| p.stop());
-            if let Ok(mut s) = state.session.lock() {
+            if let Ok(mut s) = state.lock_session() {
                 *s = Default::default();
             }
-            let _ = app.emit("playback://stopped", ());
+            emit_logged(app, "playback://stopped", ());
         }
         VideoHotkey::ToggleFullscreen => {
             if let Some(win) = app.get_webview_window("main") {
@@ -195,16 +207,16 @@ fn handle_video_hotkeys(app: &AppHandle, state: &AppState) {
             }
         }
         VideoHotkey::Next => {
-            let _ = app.emit("playback://hotkey", "next");
+            emit_logged(app, "playback://hotkey", "next");
         }
         VideoHotkey::Previous => {
-            let _ = app.emit("playback://hotkey", "previous");
+            emit_logged(app, "playback://hotkey", "previous");
         }
         VideoHotkey::Miniplayer if !media_only => {
-            let _ = app.emit("playback://hotkey", "minimize");
+            emit_logged(app, "playback://hotkey", "minimize");
         }
         VideoHotkey::ToggleUiHidden if !media_only => {
-            let _ = app.emit("playback://hotkey", "toggleUi");
+            emit_logged(app, "playback://hotkey", "toggleUi");
         }
         _ => {}
     }

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-ensure-video-surface"
+description = "Enables the ensure_video_surface command without any pre-configured scope."
+commands.allow = ["ensure_video_surface"]
+
+[[permission]]
+identifier = "deny-ensure-video-surface"
+description = "Denies the ensure_video_surface command without any pre-configured scope."
+commands.deny = ["ensure_video_surface"]

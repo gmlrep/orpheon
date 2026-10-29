@@ -22,7 +22,11 @@ const { route } = storeToRefs(ui);
           :aria-current="route === item.id ? 'page' : undefined"
           @click.prevent="ui.navigate(item.id)"
         >
-          <AppIcon :name="item.icon" :variant="route === item.id ? 'active' : 'default'" :size="16" />
+          <AppIcon
+            :name="item.icon"
+            :variant="route === item.id ? 'active' : 'default'"
+            :size="16"
+          />
           <span class="nav-label">{{ t(item.label) }}</span>
         </a>
       </nav>

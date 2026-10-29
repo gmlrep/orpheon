@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-update-stage-rect"
+description = "Enables the update_stage_rect command without any pre-configured scope."
+commands.allow = ["update_stage_rect"]
+
+[[permission]]
+identifier = "deny-update-stage-rect"
+description = "Denies the update_stage_rect command without any pre-configured scope."
+commands.deny = ["update_stage_rect"]

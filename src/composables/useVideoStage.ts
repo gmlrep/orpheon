@@ -1,11 +1,4 @@
-import {
-  nextTick,
-  onBeforeUnmount,
-  onMounted,
-  toValue,
-  watch,
-  type MaybeRefOrGetter,
-} from "vue";
+import { nextTick, onBeforeUnmount, onMounted, toValue, watch, type MaybeRefOrGetter } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { storeToRefs } from "pinia";
@@ -175,12 +168,7 @@ export function useVideoStage(options: {
   );
 
   watch(
-    () => [
-      tracksOpen.value,
-      fullscreen.value,
-      toValue(options.chromeVisible),
-      uiHidden.value,
-    ],
+    () => [tracksOpen.value, fullscreen.value, toValue(options.chromeVisible), uiHidden.value],
     () => scheduleSync(),
   );
 

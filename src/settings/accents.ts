@@ -11,5 +11,7 @@ export const ACCENT_SWATCHES = [
 ] as const;
 
 export function accentColor(index: number): string {
-  return ACCENT_SWATCHES[Math.max(0, Math.min(ACCENT_SWATCHES.length - 1, index))] ?? ACCENT_SWATCHES[0];
+  return (
+    ACCENT_SWATCHES[Math.max(0, Math.min(ACCENT_SWATCHES.length - 1, index))] ?? ACCENT_SWATCHES[0]
+  );
 }

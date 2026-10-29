@@ -400,14 +400,10 @@ extern "C" {
     /// Free a string allocated by libVLC.
     pub fn libvlc_free(ptr: *mut c_void);
     /// Media currently attached to the player (caller must `libvlc_media_release`).
-    pub fn libvlc_media_player_get_media(
-        player: *mut libvlc_media_player_t,
-    ) -> *mut libvlc_media_t;
+    pub fn libvlc_media_player_get_media(player: *mut libvlc_media_player_t)
+        -> *mut libvlc_media_t;
     /// Read a metadata field (caller must `libvlc_free` the returned string).
-    pub fn libvlc_media_get_meta(
-        media: *mut libvlc_media_t,
-        e_meta: libvlc_meta_t,
-    ) -> *mut c_char;
+    pub fn libvlc_media_get_meta(media: *mut libvlc_media_t, e_meta: libvlc_meta_t) -> *mut c_char;
 }
 
 /// libVLC media metadata keys (subset used by Orpheon).

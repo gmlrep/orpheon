@@ -8,7 +8,6 @@ export type MockRouterState = {
 };
 
 declare global {
-  // eslint-disable-next-line no-var
   var __orpheonMockRouter: MockRouterState | undefined;
 }
 

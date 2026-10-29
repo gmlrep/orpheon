@@ -1,6 +1,8 @@
 //! Playback commands.
 
 use crate::constants::{DEFAULT_VOLUME, SOFTVOL_ENGINE_MAX};
+use crate::error::CommandError;
+use crate::path_guard::assert_playable_path;
 use crate::pref_units::parse_percent;
 use crate::state::{AppState, SessionInfo};
 use serde::Serialize;
@@ -32,13 +34,27 @@ pub struct EngineStatus {
     pub session: SessionInfo,
 }
 
+/// IPC DTO for track / chapter lists (mirrors frontend `TrackSnapshot`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackSnapshotDto {
+    pub video: Vec<(i32, String)>,
+    pub audio: Vec<(i32, String)>,
+    pub spu: Vec<(i32, String)>,
+    pub chapters: Vec<(i32, String)>,
+    pub selected_video: i32,
+    pub selected_audio: i32,
+    pub selected_spu: i32,
+    pub selected_chapter: i32,
+}
+
 #[tauri::command]
-pub fn engine_status(state: State<'_, AppState>) -> EngineStatus {
-    let session = state.session.lock().map(|s| s.clone()).unwrap_or_default();
-    EngineStatus {
+pub fn engine_status(state: State<'_, AppState>) -> Result<EngineStatus, CommandError> {
+    let session = state.lock_session()?.clone();
+    Ok(EngineStatus {
         available: state.player.available(),
         session,
-    }
+    })
 }
 
 #[tauri::command]
@@ -48,10 +64,10 @@ pub fn play_path(
     title: Option<String>,
     media_id: Option<i64>,
     is_video: Option<bool>,
-) -> Result<SessionInfo, String> {
+) -> Result<SessionInfo, CommandError> {
     #[cfg(feature = "vlc")]
     {
-        let path_buf = PathBuf::from(&path);
+        let path_buf = assert_playable_path(&state, &path)?;
         let display = title.unwrap_or_else(|| {
             path_buf
                 .file_stem()
@@ -70,8 +86,8 @@ pub fn play_path(
         state
             .player
             .with_mut(|p| p.open_path_with_options(&path_buf, &opt_refs))
-            .ok_or_else(|| "Playback engine unavailable".to_string())?
-            .map_err(|e| e.to_string())?;
+            .ok_or_else(|| CommandError::msg("Playback engine unavailable"))?
+            .map_err(CommandError::from)?;
 
         let volume = initial_volume(&state);
         let _ = state.player.with(|p| {
@@ -80,18 +96,28 @@ pub fn play_path(
         });
 
         // Defer resume until length is known (poller applies pending_seek).
-        if let Ok(mut pending) = state.pending_seek.lock() {
+        if let Ok(mut pending) = state.lock_pending_seek() {
             *pending = None;
         }
-        if crate::prefs_apply::should_resume(&settings) {
-            if let Ok(store) = state.settings.lock() {
-                if let Ok(map) = store.load_resume_positions() {
-                    if let Some((pos, _)) = map.get(&path) {
-                        if let Ok(mut pending) = state.pending_seek.lock() {
-                            *pending = Some(pos.clamp(0.02, 0.98));
-                        }
-                    }
+        let mut resume_offer = None;
+        let saved_pos = if crate::prefs_apply::should_auto_resume(&settings)
+            || crate::prefs_apply::should_ask_resume(&settings)
+        {
+            state
+                .lock_settings()
+                .ok()
+                .and_then(|store| store.load_resume_positions().ok())
+                .and_then(|map| map.get(&path).map(|(pos, _)| pos.clamp(0.02, 0.98)))
+        } else {
+            None
+        };
+        if let Some(pos) = saved_pos {
+            if crate::prefs_apply::should_auto_resume(&settings) {
+                if let Ok(mut pending) = state.lock_pending_seek() {
+                    *pending = Some(pos);
                 }
+            } else if crate::prefs_apply::should_ask_resume(&settings) {
+                resume_offer = Some(pos);
             }
         }
 
@@ -113,16 +139,17 @@ pub fn play_path(
             length_ms: 0,
             volume,
             artwork_url: None,
+            resume_offer,
         };
-        if let Ok(mut s) = state.session.lock() {
-            *s = session.clone();
-        }
+        *state.lock_session()? = session.clone();
         Ok(session)
     }
     #[cfg(not(feature = "vlc"))]
     {
         let _ = (state, path, title, media_id, is_video);
-        Err("Built without libVLC (vlc feature disabled)".into())
+        Err(CommandError::msg(
+            "Built without libVLC (vlc feature disabled)",
+        ))
     }
 }
 
@@ -131,9 +158,10 @@ pub fn play_mrl(
     state: State<'_, AppState>,
     mrl: String,
     title: Option<String>,
-) -> Result<SessionInfo, String> {
+) -> Result<SessionInfo, CommandError> {
     #[cfg(feature = "vlc")]
     {
+        let mrl = crate::mrl::validate_network_mrl(&mrl)?.to_string();
         let looks_video = !mrl.to_ascii_lowercase().contains("audio")
             && !mrl.to_ascii_lowercase().ends_with(".mp3")
             && !mrl.to_ascii_lowercase().ends_with(".flac")
@@ -143,25 +171,26 @@ pub fn play_mrl(
         rebind_hwnd_if_needed(&state, looks_video);
 
         let saved = state
-            .settings
-            .lock()
+            .lock_settings()
             .ok()
             .and_then(|store| store.load_saved_streams().ok())
             .and_then(|list| list.into_iter().find(|s| s.mrl == mrl));
 
         let settings = state.load_settings();
+        let media_opts = crate::prefs_apply::media_options_from_prefs(&settings.prefs);
+        let opt_refs: Vec<&str> = media_opts.iter().map(String::as_str).collect();
         state
             .player
-            .with_mut(|p| p.open_mrl(&mrl))
-            .ok_or_else(|| "Playback engine unavailable".to_string())?
-            .map_err(|e| e.to_string())?;
+            .with_mut(|p| p.open_mrl_with_options(&mrl, &opt_refs))
+            .ok_or_else(|| CommandError::msg("Playback engine unavailable"))?
+            .map_err(CommandError::from)?;
 
         let volume = initial_volume(&state);
         let _ = state.player.with(|p| {
             p.set_volume(volume);
             crate::prefs_apply::apply_session_prefs(p, &settings.prefs);
         });
-        if let Ok(mut pending) = state.pending_seek.lock() {
+        if let Ok(mut pending) = state.lock_pending_seek() {
             *pending = None;
         }
 
@@ -170,7 +199,8 @@ pub fn play_mrl(
             .or_else(|| saved.as_ref().map(|s| s.title.clone()))
             .filter(|t| !t.trim().is_empty())
             .unwrap_or_else(|| mrl.clone());
-        let artwork_url = saved.as_ref().and_then(|s| s.artwork_url.clone());
+        let artwork_url =
+            crate::mrl::sanitize_artwork_url(saved.as_ref().and_then(|s| s.artwork_url.as_deref()));
 
         let session = SessionInfo {
             active: true,
@@ -185,53 +215,51 @@ pub fn play_mrl(
             length_ms: 0,
             volume,
             artwork_url,
+            resume_offer: None,
         };
-        if let Ok(mut s) = state.session.lock() {
-            *s = session.clone();
-        }
+        *state.lock_session()? = session.clone();
         Ok(session)
     }
     #[cfg(not(feature = "vlc"))]
     {
         let _ = (state, mrl, title);
-        Err("Built without libVLC (vlc feature disabled)".into())
+        Err(CommandError::msg(
+            "Built without libVLC (vlc feature disabled)",
+        ))
     }
 }
 
 #[tauri::command]
-pub fn play_pause(state: State<'_, AppState>) -> Result<bool, String> {
+pub fn play_pause(state: State<'_, AppState>) -> Result<bool, CommandError> {
     #[cfg(feature = "vlc")]
     {
         state
             .player
             .with_mut(|p| p.play_pause())
-            .ok_or_else(|| "Playback engine unavailable".to_string())?
-            .map_err(|e| e.to_string())?;
+            .ok_or_else(|| CommandError::msg("Playback engine unavailable"))?
+            .map_err(CommandError::from)?;
         let playing = state.player.with(|p| p.is_playing()).unwrap_or(false);
-        if let Ok(mut s) = state.session.lock() {
-            s.paused = !playing;
-            s.active = true;
-        }
+        let mut s = state.lock_session()?;
+        s.paused = !playing;
+        s.active = true;
         Ok(playing)
     }
     #[cfg(not(feature = "vlc"))]
     {
         let _ = state;
-        Err("Built without libVLC".into())
+        Err(CommandError::msg("Built without libVLC"))
     }
 }
 
 #[tauri::command]
-pub fn stop_playback(state: State<'_, AppState>) -> Result<(), String> {
+pub fn stop_playback(state: State<'_, AppState>) -> Result<(), CommandError> {
     #[cfg(feature = "vlc")]
     {
         persist_resume(&state);
         let _ = state.player.with(|p| p.stop());
-        if let Ok(mut s) = state.session.lock() {
-            *s = SessionInfo::default();
-        }
+        *state.lock_session()? = SessionInfo::default();
         #[cfg(windows)]
-        if let Ok(mut v) = state.video.lock() {
+        if let Ok(mut v) = state.lock_video() {
             if let Some(embed) = v.as_mut() {
                 embed.set_visible(false);
             }
@@ -246,97 +274,97 @@ pub fn stop_playback(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn seek(state: State<'_, AppState>, position: f32) -> Result<(), String> {
+pub fn seek(state: State<'_, AppState>, position: f32) -> Result<(), CommandError> {
     #[cfg(feature = "vlc")]
     {
-        let _ = state
+        state
             .player
             .with(|p| p.seek(position.clamp(0.0, 1.0)))
-            .ok_or_else(|| "Playback engine unavailable".to_string())?;
-        if let Ok(mut s) = state.session.lock() {
-            s.position = position.clamp(0.0, 1.0);
-        }
+            .ok_or_else(|| CommandError::msg("Playback engine unavailable"))?;
+        state.lock_session()?.position = position.clamp(0.0, 1.0);
         Ok(())
     }
     #[cfg(not(feature = "vlc"))]
     {
         let _ = (state, position);
-        Err("Built without libVLC".into())
+        Err(CommandError::msg("Built without libVLC"))
     }
 }
 
 #[tauri::command]
-pub fn seek_relative(state: State<'_, AppState>, delta_ms: i64) -> Result<(), String> {
+pub fn seek_relative(state: State<'_, AppState>, delta_ms: i64) -> Result<(), CommandError> {
     #[cfg(feature = "vlc")]
     {
-        let _ = state
+        state
             .player
             .with(|p| p.seek_relative_ms(delta_ms))
-            .ok_or_else(|| "Playback engine unavailable".to_string())?;
+            .ok_or_else(|| CommandError::msg("Playback engine unavailable"))?;
         Ok(())
     }
     #[cfg(not(feature = "vlc"))]
     {
         let _ = (state, delta_ms);
-        Err("Built without libVLC".into())
+        Err(CommandError::msg("Built without libVLC"))
     }
 }
 
 #[tauri::command]
-pub fn set_volume(state: State<'_, AppState>, volume: i32) -> Result<(), String> {
+pub fn set_volume(state: State<'_, AppState>, volume: i32) -> Result<(), CommandError> {
     let max = max_volume_from_settings(&state);
     let volume = volume.clamp(0, max);
     #[cfg(feature = "vlc")]
     {
         let _ = state.player.with(|p| p.set_volume(volume));
     }
-    if let Ok(mut s) = state.session.lock() {
-        s.volume = volume;
-    }
-    if let Ok(store) = state.settings.lock() {
-        if let Ok(mut settings) = store.load() {
-            settings.volume = volume;
-            let _ = store.save(&settings);
-        }
+    state.lock_session()?.volume = volume;
+    let store = state.lock_settings()?;
+    if let Ok(mut settings) = store.load() {
+        settings.volume = volume;
+        store.save(&settings)?;
     }
     Ok(())
 }
 
 #[tauri::command]
-pub fn track_snapshot(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+pub fn track_snapshot(state: State<'_, AppState>) -> Result<TrackSnapshotDto, CommandError> {
     #[cfg(feature = "vlc")]
     {
         let snap = state
             .player
             .with(|p| p.track_snapshot())
-            .ok_or_else(|| "Playback engine unavailable".to_string())?;
-        Ok(serde_json::json!({
-            "video": snap.video,
-            "audio": snap.audio,
-            "spu": snap.spu,
-            "chapters": snap.chapters,
-            "selectedVideo": snap.selected_video,
-            "selectedAudio": snap.selected_audio,
-            "selectedSpu": snap.selected_spu,
-            "selectedChapter": snap.selected_chapter,
-        }))
+            .ok_or_else(|| CommandError::msg("Playback engine unavailable"))?;
+        Ok(TrackSnapshotDto {
+            video: snap.video,
+            audio: snap.audio,
+            spu: snap.spu,
+            chapters: snap.chapters,
+            selected_video: snap.selected_video,
+            selected_audio: snap.selected_audio,
+            selected_spu: snap.selected_spu,
+            selected_chapter: snap.selected_chapter,
+        })
     }
     #[cfg(not(feature = "vlc"))]
     {
         let _ = state;
-        Ok(serde_json::json!({}))
+        Ok(TrackSnapshotDto {
+            video: vec![],
+            audio: vec![],
+            spu: vec![],
+            chapters: vec![],
+            selected_video: -1,
+            selected_audio: -1,
+            selected_spu: -1,
+            selected_chapter: -1,
+        })
     }
 }
 
 #[tauri::command]
-pub fn set_track(
-    state: State<'_, AppState>,
-    kind: String,
-    id: i32,
-) -> Result<(), String> {
+pub fn set_track(state: State<'_, AppState>, kind: String, id: i32) -> Result<(), CommandError> {
     #[cfg(feature = "vlc")]
     {
-        let _ = state
+        state
             .player
             .with(|p| match kind.as_str() {
                 "video" => p.set_video_track(id),
@@ -345,13 +373,13 @@ pub fn set_track(
                 "chapter" => p.set_chapter(id),
                 _ => {}
             })
-            .ok_or_else(|| "Playback engine unavailable".to_string())?;
+            .ok_or_else(|| CommandError::msg("Playback engine unavailable"))?;
         Ok(())
     }
     #[cfg(not(feature = "vlc"))]
     {
         let _ = (state, kind, id);
-        Err("Built without libVLC".into())
+        Err(CommandError::msg("Built without libVLC"))
     }
 }
 
@@ -361,7 +389,7 @@ pub fn apply_equalizer(
     enabled: bool,
     preamp: f32,
     bands: Vec<f32>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     #[cfg(feature = "vlc")]
     {
         use libvlc::EqGains;
@@ -371,23 +399,23 @@ pub fn apply_equalizer(
         for (i, g) in bands.into_iter().take(10).enumerate() {
             gains.bands[i] = g;
         }
-        let _ = state
+        state
             .player
             .with(|p| p.apply_equalizer(&gains))
-            .ok_or_else(|| "Playback engine unavailable".to_string())?;
+            .ok_or_else(|| CommandError::msg("Playback engine unavailable"))?;
         Ok(())
     }
     #[cfg(not(feature = "vlc"))]
     {
         let _ = (state, enabled, preamp, bands);
-        Err("Built without libVLC".into())
+        Err(CommandError::msg("Built without libVLC"))
     }
 }
 
 fn rebind_hwnd_if_needed(state: &AppState, video: bool) {
     #[cfg(all(feature = "vlc", windows))]
     if video {
-        if let Ok(slot) = state.video.lock() {
+        if let Ok(slot) = state.lock_video() {
             if let Some(embed) = slot.as_ref() {
                 let hwnd = embed.hwnd_void();
                 let _ = state.player.with_mut(|p| p.set_hwnd(hwnd));
@@ -416,11 +444,11 @@ fn looks_like_video(path: &str) -> bool {
 #[cfg(feature = "vlc")]
 pub(crate) fn persist_resume(state: &AppState) {
     let settings = state.load_settings();
-    if !crate::prefs_apply::should_resume(&settings) {
+    if !crate::prefs_apply::should_persist_resume(&settings) {
         return;
     }
     let (path, pos, time_ms) = {
-        let Ok(s) = state.session.lock() else {
+        let Ok(s) = state.lock_session() else {
             return;
         };
         if !s.active || s.path.is_empty() {
@@ -431,7 +459,7 @@ pub(crate) fn persist_resume(state: &AppState) {
     if !(0.02..0.95).contains(&pos) {
         return;
     }
-    if let Ok(store) = state.settings.lock() {
+    if let Ok(store) = state.lock_settings() {
         if let Ok(mut map) = store.load_resume_positions() {
             map.insert(path, (pos, time_ms));
             let _ = store.save_resume_positions(&map);

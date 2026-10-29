@@ -3,7 +3,10 @@
 mod artwork;
 mod commands;
 mod constants;
+mod emit_util;
+mod error;
 mod mrl;
+mod path_guard;
 mod player_handle;
 mod poller;
 mod pref_units;
@@ -20,11 +23,13 @@ mod prefs_apply;
 #[cfg(all(feature = "vlc", windows))]
 mod video_embed;
 
+use emit_util::emit_logged;
 use player_handle::PlayerHandle;
 use poller::start_playback_poller;
 use state::AppState;
+use std::path::PathBuf;
 use std::time::Instant;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -34,12 +39,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             let t_setup = Instant::now();
-            let data_dir = directories::ProjectDirs::from("com", "orpheon", "Orpheon")
-                .map(|d| d.data_dir().to_path_buf())
-                .unwrap_or_else(|| std::env::temp_dir().join("orpheon"));
+            let data_dir = resolve_data_dir(app.handle())?;
+            log::info!("data dir: {}", data_dir.display());
 
             // Plugin path for libVLC (DLLs themselves must sit next to the exe —
             // see build.rs). Set before spawning engine init.
@@ -84,20 +87,15 @@ pub fn run() {
                                         t.elapsed()
                                     );
                                 }
-                                let _ = handle.emit("engine://ready", true);
+                                emit_logged(&handle, "engine://ready", true);
                             }
                             Err(e) => {
-                                log::error!(
-                                    "libVLC init failed after {:?}: {e}",
-                                    t.elapsed()
-                                );
-                                let _ = handle.emit("engine://ready", false);
+                                log::error!("libVLC init failed after {:?}: {e}", t.elapsed());
+                                emit_logged(&handle, "engine://ready", false);
                             }
                         }
                     })
-                    .map_err(|e| {
-                        anyhow::anyhow!("failed to spawn vlc-init thread: {e}")
-                    })?;
+                    .map_err(|e| anyhow::anyhow!("failed to spawn vlc-init thread: {e}"))?;
             }
 
             log::info!("tauri setup returned in {:?}", t_setup.elapsed());
@@ -147,18 +145,81 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
+/// Resolve app data dir via Tauri path API; migrate legacy ProjectDirs layout once.
+fn resolve_data_dir(app: &tauri::AppHandle) -> anyhow::Result<PathBuf> {
+    let data_dir = app.path().app_data_dir()?;
+    std::fs::create_dir_all(&data_dir)?;
+
+    // Legacy: directories::ProjectDirs::from("com", "orpheon", "Orpheon")
+    // → %APPDATA%\orpheon\Orpheon on Windows.
+    let legacy = std::env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .map(|p| p.join("orpheon").join("Orpheon"))
+        .filter(|p| p.join("library.sqlite").is_file());
+
+    if let Some(legacy) = legacy {
+        let new_db = data_dir.join("library.sqlite");
+        if !new_db.is_file() {
+            log::info!(
+                "migrating data from {} → {}",
+                legacy.display(),
+                data_dir.display()
+            );
+            for name in [
+                "library.sqlite",
+                "library.sqlite-wal",
+                "library.sqlite-shm",
+                "settings.sqlite",
+                "settings.sqlite-wal",
+                "settings.sqlite-shm",
+            ] {
+                let src = legacy.join(name);
+                if src.is_file() {
+                    let _ = std::fs::copy(&src, data_dir.join(name));
+                }
+            }
+            let legacy_art = legacy.join("artwork");
+            let new_art = data_dir.join("artwork");
+            if legacy_art.is_dir() {
+                let _ = copy_dir_best_effort(&legacy_art, &new_art);
+            }
+        }
+    }
+
+    Ok(data_dir)
+}
+
+fn copy_dir_best_effort(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let to = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_best_effort(&entry.path(), &to)?;
+        } else if entry.file_type()?.is_file() && !to.exists() {
+            let _ = std::fs::copy(entry.path(), &to);
+        }
+    }
+    Ok(())
+}
+
 #[cfg(all(feature = "vlc", windows))]
 fn configure_vlc_runtime() {
     // DLLs are copied next to the exe by build.rs. Here we only set VLC_PLUGIN_PATH
     // (and PATH as a fallback for system / vendor installs).
-    let candidates = [
-        std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
-            .unwrap_or_default(),
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../vendor/vlc"),
-        std::path::PathBuf::from(crate::constants::VLC_SYSTEM_DIR),
-    ];
+    let mut candidates = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.to_path_buf());
+        }
+    }
+    // Dev-only vendor tree next to the crate (not baked into release path search).
+    #[cfg(debug_assertions)]
+    {
+        candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../vendor/vlc"));
+    }
+    candidates.push(PathBuf::from(crate::constants::VLC_SYSTEM_DIR));
+
     for dir in candidates {
         let dir = dir.canonicalize().unwrap_or(dir);
         let plugins = dir.join("plugins");

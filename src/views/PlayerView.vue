@@ -317,7 +317,11 @@ onBeforeUnmount(() => {
   background: var(--player-art-empty);
 }
 .music-art--empty {
-  background: radial-gradient(circle at 40% 35%, var(--player-art-glow), var(--player-art-empty) 70%);
+  background: radial-gradient(
+    circle at 40% 35%,
+    var(--player-art-glow),
+    var(--player-art-empty) 70%
+  );
 }
 .music-title {
   font-size: 18px;

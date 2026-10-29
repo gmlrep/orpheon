@@ -39,9 +39,7 @@ describe("settings store", () => {
     expect(store.settings.volume).toBe(40);
     expect(store.prefNumber("accent_index")).toBe(2);
     expect(document.documentElement.dataset.theme).toBe("light");
-    expect(document.documentElement.style.getPropertyValue("--accent")).toBe(
-      ACCENT_SWATCHES[2],
-    );
+    expect(document.documentElement.style.getPropertyValue("--accent")).toBe(ACCENT_SWATCHES[2]);
   });
 
   it("load falls back to defaults when invoke fails", async () => {
@@ -64,9 +62,7 @@ describe("settings store", () => {
 
     expect(invokeMock).toHaveBeenCalledWith("save_settings", expect.any(Object));
     expect(store.prefNumber("accent_index")).toBe(1);
-    expect(document.documentElement.style.getPropertyValue("--accent")).toBe(
-      ACCENT_SWATCHES[1],
-    );
+    expect(document.documentElement.style.getPropertyValue("--accent")).toBe(ACCENT_SWATCHES[1]);
   });
 
   it("setPref mirrors resume_playback and hw_accel into top-level settings", async () => {
@@ -116,9 +112,7 @@ describe("settings store", () => {
 
     await store.runAction("find_extensions");
 
-    expect(openUrlMock).toHaveBeenCalledWith(
-      "https://www.videolan.org/vlc/download-windows.html",
-    );
+    expect(openUrlMock).toHaveBeenCalledWith("https://www.videolan.org/vlc/download-windows.html");
   });
 
   it("runAction clear_history invokes backend", async () => {

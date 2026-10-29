@@ -1,15 +1,7 @@
 export type SidebarMode = "open" | "rail" | "hidden" | "sheet";
 
 export type RouteName =
-  | "home"
-  | "videos"
-  | "music"
-  | "playlists"
-  | "recent"
-  | "stream"
-  | "settings"
-  | "player"
-  | "eq";
+  "home" | "videos" | "music" | "playlists" | "recent" | "stream" | "settings" | "player" | "eq";
 
 export interface SessionInfo {
   active: boolean;
@@ -23,8 +15,10 @@ export interface SessionInfo {
   timeMs: number;
   lengthMs: number;
   volume: number;
-  /** Cover / station art (`http(s)://`, `file://`, or local path). */
+  /** Cover / station art (`http(s)://` or local artwork-cache path). */
   artworkUrl?: string | null;
+  /** Ask-mode resume position (0..=1), not yet applied. */
+  resumeOffer?: number | null;
 }
 
 export interface SavedStream {

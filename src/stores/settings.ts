@@ -13,6 +13,8 @@ import {
   DEFAULT_THEME,
   DEFAULT_VOLUME,
   DEFAULT_VOLUME_STEP_PREF,
+  EQ_BAND_COUNT,
+  EQ_DEFAULT_GAIN,
   HOTKEY_PROFILE,
   PLAYER_CHROME,
   SOFTVOL_ENGINE_MAX,
@@ -20,6 +22,16 @@ import {
 } from "../config/app";
 import { parsePercent, parseSecondsMs } from "../utils/prefUnits";
 import { setLocale } from "../i18n";
+
+const SKIP_PREF: Record<
+  "veryShort" | "short" | "medium" | "long",
+  { key: string; fallback: string }
+> = {
+  veryShort: { key: "skip_very_short", fallback: DEFAULT_SKIP.veryShort },
+  short: { key: "skip_short", fallback: DEFAULT_SKIP.short },
+  medium: { key: "skip_medium", fallback: DEFAULT_SKIP.medium },
+  long: { key: "skip_long", fallback: DEFAULT_SKIP.long },
+};
 
 const defaults = (): AppSettings => ({
   theme: DEFAULT_THEME,
@@ -76,41 +88,26 @@ export const useSettingsStore = defineStore("settings", () => {
     return typeof v === "number" ? v : fallback;
   }
 
-  function skipMs(
-    which: "veryShort" | "short" | "medium" | "long" = "short",
-  ): number {
-    const key =
-      which === "veryShort"
-        ? "skip_very_short"
-        : which === "medium"
-          ? "skip_medium"
-          : which === "long"
-            ? "skip_long"
-            : "skip_short";
-    const fallback =
-      which === "veryShort"
-        ? DEFAULT_SKIP.veryShort
-        : which === "medium"
-          ? DEFAULT_SKIP.medium
-          : which === "long"
-            ? DEFAULT_SKIP.long
-            : DEFAULT_SKIP.short;
+  function skipMs(which: "veryShort" | "short" | "medium" | "long" = "short"): number {
+    const { key, fallback } = SKIP_PREF[which];
     return parseSecondsMs(prefString(key, fallback), parseSecondsMs(fallback, 10_000));
   }
 
-  function maxVolume(): number {
-    const pct = parsePercent(
-      prefString("max_volume", DEFAULT_MAX_VOLUME_PREF),
-      DEFAULT_MAX_VOLUME,
+  function eqGains(): { preamp: number; bands: number[] } {
+    const preamp = prefNumber("eq_preamp", EQ_DEFAULT_GAIN);
+    const bands = Array.from({ length: EQ_BAND_COUNT }, (_, i) =>
+      prefNumber(`eq_band_${i}`, EQ_DEFAULT_GAIN),
     );
+    return { preamp, bands };
+  }
+
+  function maxVolume(): number {
+    const pct = parsePercent(prefString("max_volume", DEFAULT_MAX_VOLUME_PREF), DEFAULT_MAX_VOLUME);
     return Math.min(SOFTVOL_ENGINE_MAX, Math.max(1, pct));
   }
 
   function volumeStep(): number {
-    return Math.max(
-      1,
-      parsePercent(prefString("volume_step", DEFAULT_VOLUME_STEP_PREF), 5),
-    );
+    return Math.max(1, parsePercent(prefString("volume_step", DEFAULT_VOLUME_STEP_PREF), 5));
   }
 
   function autohideMs(): number {
@@ -296,10 +293,11 @@ export const useSettingsStore = defineStore("settings", () => {
 
     if (key === "equalizer_enabled") {
       try {
+        const { preamp, bands } = eqGains();
         await invoke("apply_equalizer", {
           enabled: Boolean(value),
-          preamp: 0.5,
-          bands: Array.from({ length: 10 }, () => 0.5),
+          preamp,
+          bands,
         });
       } catch {
         /* ignore when idle */
@@ -384,6 +382,7 @@ export const useSettingsStore = defineStore("settings", () => {
     prefString,
     prefNumber,
     skipMs,
+    eqGains,
     maxVolume,
     volumeStep,
     autohideMs,

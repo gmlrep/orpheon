@@ -20,7 +20,10 @@ pub struct MediaMetaSnapshot {
     pub artwork_url: Option<String>,
 }
 
-fn read_meta(media: *mut libvlc_sys::libvlc_media_t, key: libvlc_sys::libvlc_meta_t) -> Option<String> {
+fn read_meta(
+    media: *mut libvlc_sys::libvlc_media_t,
+    key: libvlc_sys::libvlc_meta_t,
+) -> Option<String> {
     let ptr = unsafe { libvlc_sys::libvlc_media_get_meta(media, key) };
     if ptr.is_null() {
         return None;

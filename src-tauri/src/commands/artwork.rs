@@ -1,16 +1,17 @@
 //! Thumbnail / cover art commands.
 
 use crate::artwork::{self, NO_ARTWORK_SENTINEL};
+use crate::error::CommandError;
 use crate::state::AppState;
 use std::path::PathBuf;
 use tauri::State;
 
 #[tauri::command]
-pub fn resolve_artwork(
+pub async fn resolve_artwork(
     state: State<'_, AppState>,
     path: String,
     media_id: Option<i64>,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, CommandError> {
     let media_path = PathBuf::from(&path);
     let id = media_id.unwrap_or_else(|| {
         // Stable hash fallback when id unknown.
@@ -23,7 +24,7 @@ pub fn resolve_artwork(
 
     // Prefer DB path if the file still exists; honor negative-cache sentinel.
     if let Some(mid) = media_id {
-        if let Ok(db) = state.library.lock() {
+        if let Ok(db) = state.lock_library() {
             if let Ok(Some(item)) = db.get_media_by_id(mid) {
                 if let Some(art) = item.artwork_path {
                     if art == NO_ARTWORK_SENTINEL {
@@ -38,11 +39,17 @@ pub fn resolve_artwork(
         }
     }
 
-    let cache = state.data_dir.join("artwork");
-    let Some(art) = artwork::ensure_artwork(&media_path, &cache, id) else {
+    let cache = state.artwork_cache_dir();
+    let art = tauri::async_runtime::spawn_blocking(move || {
+        artwork::ensure_artwork(&media_path, &cache, id)
+    })
+    .await
+    .map_err(|e| CommandError::Join(e.to_string()))?;
+
+    let Some(art) = art else {
         // Remember the miss so opening Music/Videos does not re-spawn ffmpeg forever.
         if let Some(mid) = media_id {
-            if let Ok(db) = state.library.lock() {
+            if let Ok(db) = state.lock_library() {
                 let _ = db.set_artwork_path(mid, NO_ARTWORK_SENTINEL);
             }
         }
@@ -51,7 +58,7 @@ pub fn resolve_artwork(
     let art_str = art.to_string_lossy().to_string();
 
     if let Some(mid) = media_id {
-        if let Ok(db) = state.library.lock() {
+        if let Ok(db) = state.lock_library() {
             let _ = db.set_artwork_path(mid, &art_str);
         }
     }

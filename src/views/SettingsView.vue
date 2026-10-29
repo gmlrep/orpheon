@@ -47,7 +47,9 @@ onMounted(() => {
   void settingsStore.load();
 });
 
-const page = computed(() => SETTINGS_PAGES[settingsCat.value as SettingsCatId] ?? SETTINGS_PAGES.general);
+const page = computed(
+  () => SETTINGS_PAGES[settingsCat.value as SettingsCatId] ?? SETTINGS_PAGES.general,
+);
 
 const visibleSections = computed(() =>
   page.value.sections.filter((s) => !s.advanced || advancedOpen.value),
@@ -83,7 +85,7 @@ function rowValue(row: SettingsRow): string | boolean | number {
 }
 
 function selectOptions(row: Extract<SettingsRow, { type: "select" }>): AppSelectOption<string>[] {
-  const raw = row.options?.length ? row.options : PREF_OPTIONS[row.key] ?? [];
+  const raw = row.options?.length ? row.options : (PREF_OPTIONS[row.key] ?? []);
   return raw.map((value) => ({ value, label: value }));
 }
 

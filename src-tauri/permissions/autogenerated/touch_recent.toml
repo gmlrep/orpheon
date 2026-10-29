@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-touch-recent"
+description = "Enables the touch_recent command without any pre-configured scope."
+commands.allow = ["touch_recent"]
+
+[[permission]]
+identifier = "deny-touch-recent"
+description = "Denies the touch_recent command without any pre-configured scope."
+commands.deny = ["touch_recent"]

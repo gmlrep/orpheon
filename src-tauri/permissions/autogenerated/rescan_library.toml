@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-rescan-library"
+description = "Enables the rescan_library command without any pre-configured scope."
+commands.allow = ["rescan_library"]
+
+[[permission]]
+identifier = "deny-rescan-library"
+description = "Denies the rescan_library command without any pre-configured scope."
+commands.deny = ["rescan_library"]

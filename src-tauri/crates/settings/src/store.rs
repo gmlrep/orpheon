@@ -272,9 +272,11 @@ mod tests {
     #[test]
     fn save_load_should_roundtrip_volume_and_theme() {
         let store = SettingsStore::open_in_memory().expect("open");
-        let mut s = AppSettings::default();
-        s.volume = 42;
-        s.theme = ThemePreference::Dark;
+        let s = AppSettings {
+            volume: 42,
+            theme: ThemePreference::Dark,
+            ..AppSettings::default()
+        };
         store.save(&s).expect("save");
         let loaded = store.load().expect("load");
         assert_eq!(loaded.volume, 42);

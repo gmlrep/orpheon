@@ -132,7 +132,7 @@ fn forward_to_old(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESU
         DefWindowProcW
     } else {
         // SAFETY: stored from GetWindowLongPtrW as the previous WndProc.
-        unsafe { std::mem::transmute(ptr) }
+        unsafe { std::mem::transmute::<*mut (), WndProc>(ptr) }
     };
     unsafe { CallWindowProcW(Some(old), hwnd, msg, wparam, lparam) }
 }

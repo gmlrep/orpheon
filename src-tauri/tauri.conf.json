@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Orpheon",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.orpheon.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Orpheon",
         "width": 1280,
         "height": 800,
@@ -23,11 +24,14 @@
       }
     ],
     "security": {
-      "csp": null,
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost https://asset.localhost http: https: data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https://ipc.localhost; media-src 'self' asset: http://asset.localhost https://asset.localhost; worker-src 'self'; object-src 'none'; base-uri 'self'",
       "assetProtocol": {
         "enable": true,
         "scope": {
-          "allow": ["**"]
+          "allow": [
+            "$APPDATA/com.orpheon.app/artwork/**",
+            "$APPLOCALDATA/com.orpheon.app/artwork/**"
+          ]
         }
       }
     }

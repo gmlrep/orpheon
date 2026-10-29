@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { shallowRef } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import type { SavedStream } from "../types";
+import { sanitizeArtworkUrl } from "../utils/mediaUrl";
 
 export const useStreamsStore = defineStore("streams", () => {
   const saved = shallowRef<SavedStream[]>([]);
@@ -20,7 +21,7 @@ export const useStreamsStore = defineStore("streams", () => {
     saved.value = await invoke<SavedStream[]>("save_stream", {
       mrl: mrl.trim(),
       title: title?.trim() || null,
-      artworkUrl: artworkUrl ?? null,
+      artworkUrl: sanitizeArtworkUrl(artworkUrl),
     });
   }
 

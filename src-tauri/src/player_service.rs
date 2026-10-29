@@ -154,8 +154,19 @@ impl PlayerService {
     /// # Errors
     /// Rejects disallowed schemes / empty MRLs; propagates media/play errors.
     pub fn open_mrl(&mut self, mrl: &str) -> Result<()> {
+        self.open_mrl_with_options(mrl, &[])
+    }
+
+    /// Open an MRL with extra libVLC media options.
+    ///
+    /// # Errors
+    /// Rejects disallowed schemes / empty MRLs; propagates media/play errors.
+    pub fn open_mrl_with_options(&mut self, mrl: &str, options: &[&str]) -> Result<()> {
         let mrl = validate_network_mrl(mrl)?;
         let media = Media::from_mrl(&self.instance, mrl)?;
+        for opt in options {
+            media.add_option(opt)?;
+        }
         self.player.set_media(&media);
         self.player.play()?;
         Ok(())
@@ -351,62 +362,10 @@ impl PlayerService {
     }
 }
 
-const ALLOWED_MRL_SCHEMES: &[&str] = &[
-    "http", "https", "rtsp", "rtp", "mms", "mmsh", "udp", "tcp", "srt",
-    // Local capture / optical (Open Disc / Capture Device).
-    "dvd", "cdda", "vcd", "dshow", "v4l2", "qtsound", "avcapture",
-];
-
 /// Validate a network MRL before handing it to libVLC.
 ///
 /// # Errors
 /// Empty input, control characters, missing/unknown scheme, or `file:`.
 pub fn validate_network_mrl(mrl: &str) -> Result<&str> {
-    let mrl = mrl.trim();
-    if mrl.is_empty() {
-        return Err(LibVlcError::InvalidMrl("empty stream URL".into()));
-    }
-    if mrl.chars().any(|c| c.is_control()) {
-        return Err(LibVlcError::InvalidMrl(
-            "stream URL contains control characters".into(),
-        ));
-    }
-    let Some((scheme, _rest)) = mrl.split_once(':') else {
-        return Err(LibVlcError::InvalidMrl(
-            "stream URL must include a scheme (e.g. https://…)".into(),
-        ));
-    };
-    let scheme = scheme.to_ascii_lowercase();
-    if scheme == "file" {
-        return Err(LibVlcError::InvalidMrl(
-            "file: URLs are not allowed here — use Open File".into(),
-        ));
-    }
-    if !ALLOWED_MRL_SCHEMES.iter().any(|s| *s == scheme) {
-        return Err(LibVlcError::InvalidMrl(format!(
-            "unsupported URL scheme '{scheme}' (allowed: {})",
-            ALLOWED_MRL_SCHEMES.join(", ")
-        )));
-    }
-    Ok(mrl)
-}
-
-#[cfg(test)]
-mod mrl_tests {
-    use super::validate_network_mrl;
-
-    #[test]
-    fn accepts_https() {
-        assert!(validate_network_mrl("https://example.com/a.m3u8").is_ok());
-    }
-
-    #[test]
-    fn rejects_file() {
-        assert!(validate_network_mrl("file:///tmp/x").is_err());
-    }
-
-    #[test]
-    fn rejects_empty() {
-        assert!(validate_network_mrl("  ").is_err());
-    }
+    crate::mrl::validate_network_mrl(mrl).map_err(LibVlcError::InvalidMrl)
 }

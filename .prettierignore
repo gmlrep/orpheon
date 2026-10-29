@@ -1,0 +1,11 @@
+dist
+src-tauri
+node_modules
+coverage
+vendor
+package-lock.json
+*.md
+.taste-skill
+.agents
+.github
+.vscode

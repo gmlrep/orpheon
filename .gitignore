@@ -10,7 +10,9 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+coverage
 *.local
+clippy-out.txt
 
 # Rust / Tauri
 src-tauri/target

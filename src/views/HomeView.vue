@@ -103,7 +103,9 @@ onMounted(() => {
           v-for="folder in folders"
           :key="folder.path"
           type="button"
-          @click="ui.navigate(folder.kind === 'audio' || folder.kind === 'music' ? 'music' : 'videos')"
+          @click="
+            ui.navigate(folder.kind === 'audio' || folder.kind === 'music' ? 'music' : 'videos')
+          "
         >
           <span class="meta">
             <strong>{{ folder.name }}</strong>

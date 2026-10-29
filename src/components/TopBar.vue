@@ -32,7 +32,13 @@ const { sideToggleState, fullscreen } = storeToRefs(ui);
         "
         @click="ui.cycleSidebar()"
       >
-        <svg class="side-toggle-frame" viewBox="0 0 28 28" width="28" height="28" aria-hidden="true">
+        <svg
+          class="side-toggle-frame"
+          viewBox="0 0 28 28"
+          width="28"
+          height="28"
+          aria-hidden="true"
+        >
           <path
             d="M8 23H20C21.6569 23 23 21.6569 23 20V8C23 6.34315 21.6569 5 20 5H8C6.34315 5 5 6.34315 5 8V20C5 21.6569 6.34315 23 8 23Z"
             fill="none"

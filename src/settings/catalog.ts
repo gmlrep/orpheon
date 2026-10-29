@@ -180,17 +180,10 @@ export const SETTINGS_PAGES: Record<SettingsCatId, SettingsPage> = {
             "Raise verbosity for diagnostics (0=errors and standard messages, 1=warnings, 2=debug).",
           ),
           t("save_log", "Save a log", "Log all VLC messages to a text file."),
-          p(
-            "log_path",
-            "Log file",
-            "file",
-            "Specify the log filename.",
-            "—",
-            [
-              { name: "Log", extensions: ["log", "txt"] },
-              { name: "All", extensions: ["*"] },
-            ],
-          ),
+          p("log_path", "Log file", "file", "Specify the log filename.", "—", [
+            { name: "Log", extensions: ["log", "txt"] },
+            { name: "All", extensions: ["*"] },
+          ]),
           s(
             "log_verbose",
             "Log details",
@@ -231,17 +224,10 @@ export const SETTINGS_PAGES: Record<SettingsCatId, SettingsPage> = {
         title: "Skin",
         rows: [
           t("use_custom_skin", "Use a custom skin", "Not wired yet — stored for future use."),
-          p(
-            "skin_file",
-            "Skin file",
-            "file",
-            "Path to a custom skin file.",
-            "—",
-            [
-              { name: "VLC skins", extensions: ["vlt", "wsz"] },
-              { name: "All", extensions: ["*"] },
-            ],
-          ),
+          p("skin_file", "Skin file", "file", "Path to a custom skin file.", "—", [
+            { name: "VLC skins", extensions: ["vlt", "wsz"] },
+            { name: "All", extensions: ["*"] },
+          ]),
         ],
       },
       {
@@ -283,7 +269,11 @@ export const SETTINGS_PAGES: Record<SettingsCatId, SettingsPage> = {
       {
         title: "Playback Controls",
         rows: [
-          t("start_compact", "Start in compact mode", "Start in minimal view with limited controls."),
+          t(
+            "start_compact",
+            "Start in compact mode",
+            "Start in minimal view with limited controls.",
+          ),
           s("autohide_controls", "Auto-hide the controls"),
           s("autohide_after", "Hide after"),
           t(
@@ -395,10 +385,6 @@ export const SETTINGS_PAGES: Record<SettingsCatId, SettingsPage> = {
           t("mouse_reverse_scroll", "Reverse scroll direction"),
         ],
       },
-      {
-        title: "Remotes",
-        rows: [t("http_intf", "Web remote control"), s("http_port", "Port")],
-      },
     ],
   },
   playback: {
@@ -411,7 +397,7 @@ export const SETTINGS_PAGES: Record<SettingsCatId, SettingsPage> = {
           s(
             "continue_mode",
             "Continue where you left off",
-            "Continue playback from where you left off when reopening media.",
+            "Always resumes automatically. Ask prompts before seeking. Never ignores saved positions. Hardware / decoder prefs apply on next app restart.",
           ),
           t("autoplay", "Start playing as soon as a file opens"),
           s("default_rate", "Default playback speed"),
@@ -561,7 +547,11 @@ export const SETTINGS_PAGES: Record<SettingsCatId, SettingsPage> = {
             "Spatial audio mode",
             "Defines the virtual surface of the room emulated by the spatializer.",
           ),
-          t("stereo_widen", "Stereo widening", "Width of the virtual room used by the spatializer."),
+          t(
+            "stereo_widen",
+            "Stereo widening",
+            "Width of the virtual room used by the spatializer.",
+          ),
           t("compressor", "Compressor"),
           s("pitch_shift", "Pitch shift"),
           t("chorus", "Chorus/flanger"),
@@ -584,10 +574,7 @@ export const SETTINGS_PAGES: Record<SettingsCatId, SettingsPage> = {
     sections: [
       {
         title: "Tracks & Languages",
-        rows: [
-          s("spu_language", "Preferred language"),
-          s("spu_encoding", "Text encoding"),
-        ],
+        rows: [s("spu_language", "Preferred language"), s("spu_encoding", "Text encoding")],
       },
       {
         title: "Loading Subtitles",
@@ -713,21 +700,13 @@ export const SETTINGS_PAGES: Record<SettingsCatId, SettingsPage> = {
             "Hardware-accelerated decoding",
             "Use GPU hardware decoding when available. Takes effect the next time the app starts.",
           ),
-          s(
-            "postproc",
-            "Video post-processing",
-            "Takes effect the next time the app starts.",
-          ),
+          s("postproc", "Video post-processing", "Takes effect the next time the app starts."),
           s(
             "skip_loop_filter",
             "Skip the H.264 loop filter",
             "Takes effect the next time the app starts.",
           ),
-          s(
-            "decode_threads",
-            "Decoding threads",
-            "Takes effect the next time the app starts.",
-          ),
+          s("decode_threads", "Decoding threads", "Takes effect the next time the app starts."),
         ],
       },
       {

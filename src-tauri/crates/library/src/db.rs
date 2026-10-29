@@ -276,13 +276,14 @@ impl LibraryDb {
     pub fn count_media_under_prefix(&self, prefix: &str) -> Result<i64> {
         // instr(path, prefix) = 1 → starts_with; covers Windows/Unix separators
         // as stored in the DB without loading every row into Rust.
-        self.conn.query_row(
-            "SELECT COUNT(*) FROM media_items
+        self.conn
+            .query_row(
+                "SELECT COUNT(*) FROM media_items
              WHERE path = ?1 OR instr(path, ?1) = 1",
-            params![prefix],
-            |row| row.get(0),
-        )
-        .map_err(Into::into)
+                params![prefix],
+                |row| row.get(0),
+            )
+            .map_err(Into::into)
     }
 
     /// Delete media rows whose files no longer exist under the given scan roots.

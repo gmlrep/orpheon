@@ -1,13 +1,12 @@
 //! Window / video surface layout commands.
 
+use crate::error::CommandError;
 use crate::state::{AppState, StageRect};
 use tauri::{AppHandle, Manager, State};
 
 #[tauri::command]
-pub fn update_stage_rect(state: State<'_, AppState>, rect: StageRect) -> Result<(), String> {
-    if let Ok(mut stage) = state.stage.lock() {
-        *stage = rect;
-    }
+pub fn update_stage_rect(state: State<'_, AppState>, rect: StageRect) -> Result<(), CommandError> {
+    *state.lock_stage()? = rect;
 
     #[cfg(all(feature = "vlc", windows))]
     {
@@ -21,7 +20,7 @@ pub fn update_stage_rect(state: State<'_, AppState>, rect: StageRect) -> Result<
         let w = (rect.width as f64 * scale).round() as i32;
         let h = (rect.height as f64 * scale).round() as i32;
 
-        if let Ok(mut slot) = state.video.lock() {
+        if let Ok(mut slot) = state.lock_video() {
             if let Some(embed) = slot.as_mut() {
                 if rect.visible && w > 2 && h > 2 {
                     embed.set_rect(x, y, w, h);
@@ -33,7 +32,6 @@ pub fn update_stage_rect(state: State<'_, AppState>, rect: StageRect) -> Result<
         }
     }
 
-    let _ = state;
     Ok(())
 }
 
@@ -41,14 +39,14 @@ pub fn update_stage_rect(state: State<'_, AppState>, rect: StageRect) -> Result<
 pub fn set_overlay_holes(
     state: State<'_, AppState>,
     holes: Vec<[i32; 5]>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     #[cfg(all(feature = "vlc", windows))]
     {
         let rects: Vec<(i32, i32, i32, i32, i32)> = holes
             .into_iter()
             .map(|h| (h[0], h[1], h[2], h[3], h[4]))
             .collect();
-        if let Ok(mut slot) = state.video.lock() {
+        if let Ok(mut slot) = state.lock_video() {
             if let Some(embed) = slot.as_mut() {
                 embed.set_overlay_excludes(&rects);
             }
@@ -62,21 +60,24 @@ pub fn set_overlay_holes(
 }
 
 #[tauri::command]
-pub fn ensure_video_surface(app: AppHandle, state: State<'_, AppState>) -> Result<bool, String> {
+pub fn ensure_video_surface(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<bool, CommandError> {
     #[cfg(all(feature = "vlc", windows))]
     {
         use crate::video_embed::{parent_hwnd_from_tauri, VideoEmbed};
 
         let window = app
             .get_webview_window("main")
-            .ok_or_else(|| "main window missing".to_string())?;
+            .ok_or_else(|| CommandError::msg("main window missing"))?;
         let parent = parent_hwnd_from_tauri(&window)
-            .ok_or_else(|| "could not resolve parent HWND".to_string())?;
+            .ok_or_else(|| CommandError::msg("could not resolve parent HWND"))?;
 
-        let mut slot = state.video.lock().map_err(|_| "video lock".to_string())?;
+        let mut slot = state.lock_video()?;
         if slot.is_none() {
             let embed = VideoEmbed::create(parent)
-                .ok_or_else(|| "failed to create video HWND".to_string())?;
+                .ok_or_else(|| CommandError::msg("failed to create video HWND"))?;
             // Bind libVLC to the surface.
             let hwnd = embed.hwnd_void();
             let _ = state.player.with_mut(|p| p.set_hwnd(hwnd));
@@ -95,10 +96,10 @@ pub fn ensure_video_surface(app: AppHandle, state: State<'_, AppState>) -> Resul
 }
 
 #[tauri::command]
-pub fn hide_video_surface(state: State<'_, AppState>) -> Result<(), String> {
+pub fn hide_video_surface(state: State<'_, AppState>) -> Result<(), CommandError> {
     #[cfg(all(feature = "vlc", windows))]
     {
-        if let Ok(mut slot) = state.video.lock() {
+        if let Ok(mut slot) = state.lock_video() {
             if let Some(embed) = slot.as_mut() {
                 embed.set_visible(false);
                 embed.set_overlay_excludes(&[]);
@@ -116,13 +117,13 @@ pub fn hide_video_surface(state: State<'_, AppState>) -> Result<(), String> {
 pub fn cursor_in_stage_bottom(
     state: State<'_, AppState>,
     strip_css_px: i32,
-) -> Result<bool, String> {
+) -> Result<bool, CommandError> {
     #[cfg(windows)]
     {
         use windows_sys::Win32::Foundation::POINT;
         use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
-        let stage = state.stage.lock().map_err(|_| "stage lock".to_string())?;
+        let stage = state.lock_stage()?;
         if !stage.visible || stage.height < 2 || stage.width < 2 {
             return Ok(false);
         }
@@ -145,7 +146,7 @@ pub fn cursor_in_stage_bottom(
         // compare against last applied screen rect from the embed when available.
         #[cfg(all(feature = "vlc", windows))]
         {
-            if let Ok(slot) = state.video.lock() {
+            if let Ok(slot) = state.lock_video() {
                 if let Some(embed) = slot.as_ref() {
                     let (sx, sy, sw, sh) = embed.screen_rect();
                     if sw < 2 || sh < 2 {

@@ -6,6 +6,8 @@ import type { MediaItem, PlaybackTick, ResumeItem, SessionInfo, TrackSnapshot } 
 import { useUiStore } from "./ui";
 import { useSettingsStore } from "./settings";
 import { DEFAULT_VOLUME } from "../config/app";
+import { sanitizeArtworkUrl } from "../utils/mediaUrl";
+import { i18n } from "../i18n";
 
 export interface QueueItem {
   path: string;
@@ -30,11 +32,11 @@ const emptySession = (): SessionInfo => ({
   lengthMs: 0,
   volume: DEFAULT_VOLUME,
   artworkUrl: null,
+  resumeOffer: null,
 });
 
-function applySessionArt(session: SessionInfo) {
-  if (session.artworkUrl) return session.artworkUrl;
-  return null;
+function sessionArt(info: SessionInfo): string | null {
+  return sanitizeArtworkUrl(info.artworkUrl);
 }
 
 async function tearDownVideoSurface() {
@@ -120,7 +122,7 @@ export const usePlaybackStore = defineStore("playback", () => {
           session.value = next;
         }
         playing.value = ev.payload.playing;
-        const art = applySessionArt(session.value);
+        const art = sessionArt(session.value);
         if (art) coverPath.value = art;
         if (!muted.value) {
           /* keep mute flag when volume is intentionally 0 */
@@ -227,9 +229,21 @@ export const usePlaybackStore = defineStore("playback", () => {
       mediaId: item.mediaId ?? null,
       isVideo: item.isVideo,
     });
-    session.value = next;
+    session.value = { ...next, resumeOffer: null };
     muted.value = next.volume <= 0;
+    const art = sessionArt(next);
+    if (art) coverPath.value = art;
     await afterPlay(item, expandVideo);
+    await askResumeIfNeeded(next);
+  }
+
+  async function askResumeIfNeeded(next: SessionInfo) {
+    const offer = next.resumeOffer;
+    if (offer == null || !(offer > 0 && offer < 1)) return;
+    const ok = window.confirm(String(i18n.global.t("player.resumeAsk")));
+    if (!ok) return;
+    await invoke("seek", { position: offer });
+    session.value = { ...session.value, position: offer, resumeOffer: null };
   }
 
   async function playPath(
@@ -268,7 +282,8 @@ export const usePlaybackStore = defineStore("playback", () => {
     const ui = useUiStore();
     queue.value = [];
     queueIndex.value = -1;
-    coverPath.value = opts?.artworkUrl ?? null;
+    const safeArt = sanitizeArtworkUrl(opts?.artworkUrl);
+    coverPath.value = safeArt;
     try {
       await ensureSurfaceForVideo(true);
     } catch (e) {
@@ -281,7 +296,7 @@ export const usePlaybackStore = defineStore("playback", () => {
     session.value = next;
     playing.value = true;
     muted.value = next.volume <= 0;
-    coverPath.value = applySessionArt(next) ?? opts?.artworkUrl ?? null;
+    coverPath.value = sessionArt(next) ?? safeArt;
     if (next.isVideo) ui.navigate("player");
   }
 

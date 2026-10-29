@@ -1,25 +1,15 @@
 //! Saved network stream bookmarks.
 
+use crate::error::CommandError;
+use crate::mrl::{sanitize_artwork_url, validate_network_mrl};
 use crate::state::AppState;
+use crate::time_util::now_unix_secs;
 use settings::SavedStream;
-use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 
-fn now_secs() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
-}
-
 #[tauri::command]
-pub fn list_saved_streams(state: State<'_, AppState>) -> Result<Vec<SavedStream>, String> {
-    state
-        .settings
-        .lock()
-        .map_err(|_| "settings lock".to_string())?
-        .load_saved_streams()
-        .map_err(|e| e.to_string())
+pub fn list_saved_streams(state: State<'_, AppState>) -> Result<Vec<SavedStream>, CommandError> {
+    Ok(state.lock_settings()?.load_saved_streams()?)
 }
 
 #[tauri::command]
@@ -28,22 +18,12 @@ pub fn save_stream(
     mrl: String,
     title: Option<String>,
     artwork_url: Option<String>,
-) -> Result<Vec<SavedStream>, String> {
-    let mrl = mrl.trim().to_string();
-    if mrl.is_empty() {
-        return Err("Stream URL is empty".into());
-    }
-    #[cfg(feature = "vlc")]
-    {
-        crate::player_service::validate_network_mrl(&mrl).map_err(|e| e.to_string())?;
-    }
+) -> Result<Vec<SavedStream>, CommandError> {
+    let mrl = validate_network_mrl(&mrl)?.to_string();
 
     let existing = state
-        .settings
-        .lock()
-        .map_err(|_| "settings lock".to_string())?
-        .load_saved_streams()
-        .map_err(|e| e.to_string())?
+        .lock_settings()?
+        .load_saved_streams()?
         .into_iter()
         .find(|s| s.mrl == mrl);
 
@@ -53,35 +33,24 @@ pub fn save_stream(
         .or_else(|| existing.as_ref().map(|s| s.title.clone()))
         .filter(|t| !t.is_empty())
         .unwrap_or_else(|| mrl.clone());
-    let artwork_url = artwork_url
-        .filter(|u| !u.trim().is_empty())
-        .or_else(|| existing.and_then(|s| s.artwork_url));
+    let artwork_url = sanitize_artwork_url(artwork_url.as_deref())
+        .or_else(|| sanitize_artwork_url(existing.and_then(|s| s.artwork_url).as_deref()));
 
     let stream = SavedStream {
         mrl,
         title,
         artwork_url,
-        saved_at: now_secs(),
+        saved_at: now_unix_secs(),
     };
-    state
-        .settings
-        .lock()
-        .map_err(|_| "settings lock".to_string())?
-        .upsert_saved_stream(stream)
-        .map_err(|e| e.to_string())
+    Ok(state.lock_settings()?.upsert_saved_stream(stream)?)
 }
 
 #[tauri::command]
 pub fn remove_saved_stream(
     state: State<'_, AppState>,
     mrl: String,
-) -> Result<Vec<SavedStream>, String> {
-    state
-        .settings
-        .lock()
-        .map_err(|_| "settings lock".to_string())?
-        .remove_saved_stream(mrl.trim())
-        .map_err(|e| e.to_string())
+) -> Result<Vec<SavedStream>, CommandError> {
+    Ok(state.lock_settings()?.remove_saved_stream(mrl.trim())?)
 }
 
 /// Merge discovered stream metadata into a saved bookmark when present.
@@ -91,7 +60,8 @@ pub(crate) fn enrich_saved_stream_meta(
     title: &str,
     artwork_url: Option<&str>,
 ) {
-    let Ok(store) = state.settings.lock() else {
+    let art = sanitize_artwork_url(artwork_url);
+    let Ok(store) = state.lock_settings() else {
         return;
     };
     let Ok(mut list) = store.load_saved_streams() else {
@@ -105,14 +75,14 @@ pub(crate) fn enrich_saved_stream_meta(
         entry.title = title.to_string();
         changed = true;
     }
-    if let Some(art) = artwork_url {
-        if !art.is_empty() && entry.artwork_url.as_deref() != Some(art) {
-            entry.artwork_url = Some(art.to_string());
+    if let Some(ref art) = art {
+        if entry.artwork_url.as_deref() != Some(art.as_str()) {
+            entry.artwork_url = Some(art.clone());
             changed = true;
         }
     }
     if changed {
-        entry.saved_at = now_secs();
+        entry.saved_at = now_unix_secs();
         let _ = store.save_saved_streams(&list);
     }
 }

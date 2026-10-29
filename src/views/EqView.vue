@@ -23,6 +23,9 @@ const labels = computed(() => bandKeys.map((k) => t(`eq.bands.${k}`)));
 
 onMounted(() => {
   enabled.value = settings.prefBool("equalizer_enabled", false);
+  const gains = settings.eqGains();
+  preamp.value = gains.preamp;
+  bands.value = [...gains.bands];
 });
 
 let applyTimer = 0;
@@ -33,12 +36,22 @@ watch(
     window.clearTimeout(applyTimer);
     applyTimer = window.setTimeout(() => {
       void playback.applyEqualizer(enabled.value, preamp.value, [...bands.value]);
-      if (!syncing && settings.prefBool("equalizer_enabled", false) !== enabled.value) {
-        syncing = true;
-        void settings.setPref("equalizer_enabled", enabled.value).finally(() => {
+      if (syncing) return;
+      syncing = true;
+      void (async () => {
+        try {
+          const prefs: Record<string, number | boolean> = {
+            equalizer_enabled: enabled.value,
+            eq_preamp: preamp.value,
+          };
+          for (let i = 0; i < EQ_BAND_COUNT; i++) {
+            prefs[`eq_band_${i}`] = bands.value[i] ?? EQ_DEFAULT_GAIN;
+          }
+          await settings.save({ prefs });
+        } finally {
           syncing = false;
-        });
-      }
+        }
+      })();
     }, EQ_APPLY_DEBOUNCE_MS);
   },
   { deep: true },

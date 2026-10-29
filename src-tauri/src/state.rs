@@ -1,11 +1,12 @@
 //! Shared application state for Tauri commands.
 
+use crate::error::CommandError;
 use crate::player_handle::PlayerHandle;
 use library::LibraryDb;
 use serde::{Deserialize, Serialize};
 use settings::{AppSettings, SettingsStore};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 #[cfg(all(feature = "vlc", windows))]
 use crate::video_embed::VideoEmbed;
@@ -25,9 +26,12 @@ pub struct SessionInfo {
     pub time_ms: i64,
     pub length_ms: i64,
     pub volume: i32,
-    /// Cover / station art (`http(s)://`, `file://`, or local path).
+    /// Cover / station art (`http(s)://` only for remote; local paths from artwork cache).
     #[serde(default)]
     pub artwork_url: Option<String>,
+    /// When continue mode is Ask: offered resume position (0..=1), not yet applied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_offer: Option<f32>,
 }
 
 /// Playback tick payload emitted to the frontend.
@@ -68,6 +72,7 @@ impl AppState {
     /// Open library + settings under `data_dir` and attach an optional player.
     pub fn new(data_dir: PathBuf, player: PlayerHandle) -> anyhow::Result<Self> {
         std::fs::create_dir_all(&data_dir)?;
+        std::fs::create_dir_all(data_dir.join("artwork"))?;
         let library = LibraryDb::open(&data_dir.join("library.sqlite"))?;
         let settings = SettingsStore::open(&data_dir.join("settings.sqlite"))?;
         Ok(Self {
@@ -87,10 +92,54 @@ impl AppState {
     }
 
     pub fn load_settings(&self) -> AppSettings {
+        match self.lock_settings() {
+            Ok(store) => store.load().unwrap_or_default(),
+            Err(e) => {
+                log::error!("{e}");
+                AppSettings::default()
+            }
+        }
+    }
+
+    pub fn lock_library(&self) -> Result<MutexGuard<'_, LibraryDb>, CommandError> {
+        self.library
+            .lock()
+            .map_err(|_| CommandError::Lock("library"))
+    }
+
+    pub fn lock_settings(&self) -> Result<MutexGuard<'_, SettingsStore>, CommandError> {
         self.settings
             .lock()
-            .ok()
-            .and_then(|s| s.load().ok())
-            .unwrap_or_default()
+            .map_err(|_| CommandError::Lock("settings"))
+    }
+
+    pub fn lock_session(&self) -> Result<MutexGuard<'_, SessionInfo>, CommandError> {
+        self.session
+            .lock()
+            .map_err(|_| CommandError::Lock("session"))
+    }
+
+    pub fn lock_pending_seek(&self) -> Result<MutexGuard<'_, Option<f32>>, CommandError> {
+        self.pending_seek
+            .lock()
+            .map_err(|_| CommandError::Lock("pending_seek"))
+    }
+
+    pub fn lock_stage(&self) -> Result<MutexGuard<'_, StageRect>, CommandError> {
+        self.stage.lock().map_err(|_| CommandError::Lock("stage"))
+    }
+
+    #[cfg(all(feature = "vlc", windows))]
+    pub fn lock_video(&self) -> Result<MutexGuard<'_, Option<VideoEmbed>>, CommandError> {
+        self.video.lock().map_err(|_| CommandError::Lock("video"))
+    }
+
+    /// Path to the on-disk SQLite library (for short-lived scan connections).
+    pub fn library_db_path(&self) -> PathBuf {
+        self.data_dir.join("library.sqlite")
+    }
+
+    pub fn artwork_cache_dir(&self) -> PathBuf {
+        self.data_dir.join("artwork")
     }
 }

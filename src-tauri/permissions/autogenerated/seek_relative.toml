@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-seek-relative"
+description = "Enables the seek_relative command without any pre-configured scope."
+commands.allow = ["seek_relative"]
+
+[[permission]]
+identifier = "deny-seek-relative"
+description = "Denies the seek_relative command without any pre-configured scope."
+commands.deny = ["seek_relative"]

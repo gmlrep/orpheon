@@ -2,8 +2,7 @@
 
 export const APP_NAME = "Orpheon";
 
-export const VLC_DOWNLOAD_WINDOWS_URL =
-  "https://www.videolan.org/vlc/download-windows.html";
+export const VLC_DOWNLOAD_WINDOWS_URL = "https://www.videolan.org/vlc/download-windows.html";
 
 /** Softvol: 100 = 0 dB, engine allows up to 200. */
 export const SOFTVOL_UNITY = 100;

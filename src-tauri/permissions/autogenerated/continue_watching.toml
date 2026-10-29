@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-continue-watching"
+description = "Enables the continue_watching command without any pre-configured scope."
+commands.allow = ["continue_watching"]
+
+[[permission]]
+identifier = "deny-continue-watching"
+description = "Denies the continue_watching command without any pre-configured scope."
+commands.deny = ["continue_watching"]

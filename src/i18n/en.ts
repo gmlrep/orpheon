@@ -57,6 +57,7 @@ export default {
     nowPlaying: "Now playing",
     openNowPlaying: "Open now playing",
     playback: "Playback",
+    resumeAsk: "Resume from where you left off?",
   },
   sort: {
     title: "Title",
@@ -74,6 +75,8 @@ export default {
     select: "Select a playlist",
     emptyItems: "Empty playlist",
     namePrompt: "Playlist name",
+    add: "Add to playlist",
+    pickPrompt: "Enter playlist number:",
   },
   recent: {
     empty: "No recent media",

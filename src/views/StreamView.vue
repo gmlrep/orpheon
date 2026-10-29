@@ -21,9 +21,7 @@ const mrl = shallowRef("");
 const error = shallowRef("");
 
 const trimmed = computed(() => mrl.value.trim());
-const currentIsInput = computed(
-  () => !!trimmed.value && playback.isCurrentMrl(trimmed.value),
-);
+const currentIsInput = computed(() => !!trimmed.value && playback.isCurrentMrl(trimmed.value));
 
 onMounted(() => {
   void streams.load();
@@ -54,12 +52,8 @@ async function saveCurrent() {
   if (!url) return;
   try {
     const title =
-      playback.isCurrentMrl(url) && session.value.title !== url
-        ? session.value.title
-        : undefined;
-    const artworkUrl = playback.isCurrentMrl(url)
-      ? session.value.artworkUrl
-      : undefined;
+      playback.isCurrentMrl(url) && session.value.title !== url ? session.value.title : undefined;
+    const artworkUrl = playback.isCurrentMrl(url) ? session.value.artworkUrl : undefined;
     await streams.save(url, title, artworkUrl);
   } catch (e) {
     error.value = String(e);
@@ -95,12 +89,7 @@ function artSrc(item: SavedStream) {
           @keydown.enter="openStream()"
         />
       </label>
-      <button
-        type="button"
-        class="btn-primary"
-        :disabled="!trimmed"
-        @click="openStream()"
-      >
+      <button type="button" class="btn-primary" :disabled="!trimmed" @click="openStream()">
         <template v-if="currentIsInput">
           {{ playing ? t("player.pause") : t("player.play") }}
         </template>
@@ -123,12 +112,7 @@ function artSrc(item: SavedStream) {
           :src="resolveMediaSrc(session.artworkUrl)!"
           alt=""
         />
-        <MediaThumb
-          v-else
-          :title="session.title"
-          :seed="session.path"
-          :wide="false"
-        />
+        <MediaThumb v-else :title="session.title" :seed="session.path" :wide="false" />
       </div>
       <div class="now-stream-meta">
         <strong>{{ session.title }}</strong>
@@ -154,12 +138,7 @@ function artSrc(item: SavedStream) {
         <button type="button" class="stream-main" @click="openStream(item)">
           <span class="stream-thumb">
             <img v-if="artSrc(item)" :src="artSrc(item)!" alt="" />
-            <MediaThumb
-              v-else
-              :title="item.title"
-              :seed="item.mrl"
-              :wide="false"
-            />
+            <MediaThumb v-else :title="item.title" :seed="item.mrl" :wide="false" />
           </span>
           <span class="stream-meta">
             <strong>{{ item.title }}</strong>

@@ -1,16 +1,15 @@
-/** Parse preference display strings like `"10 s"`, `"125%"`, `"1.25"`. */
+/** Parse preference display strings like `"10 s"`, `"10s"`, `"125%"`, `"1.25"`. */
 
 export function parseSeconds(raw: string | null | undefined, fallbackSec: number): number {
   if (raw == null || raw === "") return fallbackSec;
   const m = String(raw)
     .trim()
-    .match(/^(-?\d+(?:\.\d+)?)\s*s(?:ec(?:onds?)?)?$/i);
+    .match(/^(-?\d+(?:\.\d+)?)\s*(?:s(?:ec(?:onds?)?)?)?$/i);
   if (m) {
     const n = Number(m[1]);
     return Number.isFinite(n) ? n : fallbackSec;
   }
-  const n = Number(String(raw).trim());
-  return Number.isFinite(n) ? n : fallbackSec;
+  return fallbackSec;
 }
 
 export function parseSecondsMs(raw: string | null | undefined, fallbackMs: number): number {

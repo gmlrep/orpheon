@@ -57,6 +57,7 @@ export default {
     nowPlaying: "Сейчас играет",
     openNowPlaying: "Открыть сейчас играет",
     playback: "Воспроизведение",
+    resumeAsk: "Продолжить с места остановки?",
   },
   sort: {
     title: "Название",
@@ -74,6 +75,8 @@ export default {
     select: "Выберите плейлист",
     emptyItems: "Плейлист пуст",
     namePrompt: "Название плейлиста",
+    add: "В плейлист",
+    pickPrompt: "Номер плейлиста:",
   },
   recent: {
     empty: "Нет недавних медиа",

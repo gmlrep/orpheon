@@ -63,7 +63,12 @@ function onPointerUp(e: PointerEvent) {
 
 <template>
   <div class="vol">
-    <button type="button" class="icon-btn" :aria-label="$t('player.mute')" @click="emit('toggleMute')">
+    <button
+      type="button"
+      class="icon-btn"
+      :aria-label="$t('player.mute')"
+      @click="emit('toggleMute')"
+    >
       <AppIcon name="volume" :size="18" />
     </button>
     <div
@@ -83,7 +88,12 @@ function onPointerUp(e: PointerEvent) {
     >
       <img class="wedge-bg" src="../assets/icons/volume-wedge-bg.svg" alt="" draggable="false" />
       <span class="wedge-clip">
-        <img class="wedge-fill" src="../assets/icons/volume-wedge-fill.svg" alt="" draggable="false" />
+        <img
+          class="wedge-fill"
+          src="../assets/icons/volume-wedge-fill.svg"
+          alt=""
+          draggable="false"
+        />
       </span>
     </div>
   </div>

@@ -1,7 +1,8 @@
 //! Library browse / scan commands.
 
+use crate::error::CommandError;
 use crate::state::AppState;
-use library::{scan_root, MediaItem, MediaType, Playlist};
+use library::{scan_root, LibraryDb, MediaItem, MediaType, Playlist};
 use serde::Serialize;
 use std::path::Path;
 use tauri::State;
@@ -15,38 +16,46 @@ pub struct FolderDto {
     pub kind: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContinueWatchingItem {
+    pub id: Option<i64>,
+    pub title: String,
+    pub path: String,
+    pub progress: f32,
+    pub duration_ms: Option<i64>,
+    pub media_type: MediaType,
+    pub artwork_path: Option<String>,
+}
+
 #[tauri::command]
 pub fn list_media(
     state: State<'_, AppState>,
     media_type: Option<String>,
     query: Option<String>,
     limit: Option<i64>,
-) -> Result<Vec<MediaItem>, String> {
-    let db = state.library.lock().map_err(|_| "library lock".to_string())?;
+) -> Result<Vec<MediaItem>, CommandError> {
+    let db = state.lock_library()?;
     let mt = media_type.as_deref().map(MediaType::parse);
-    db.list_media_filtered(mt, query.as_deref(), limit)
-        .map_err(|e| e.to_string())
+    Ok(db.list_media_filtered(mt, query.as_deref(), limit)?)
 }
 
 #[tauri::command]
 pub fn list_recent_media(
     state: State<'_, AppState>,
     limit: Option<i64>,
-) -> Result<Vec<MediaItem>, String> {
-    let db = state.library.lock().map_err(|_| "library lock".to_string())?;
-    db.list_recent(limit.unwrap_or(40))
-        .map_err(|e| e.to_string())
+) -> Result<Vec<MediaItem>, CommandError> {
+    let db = state.lock_library()?;
+    Ok(db.list_recent(limit.unwrap_or(40))?)
 }
 
 #[tauri::command]
 pub fn list_folders(
     state: State<'_, AppState>,
     kind: Option<String>,
-) -> Result<Vec<FolderDto>, String> {
-    let db = state.library.lock().map_err(|_| "library lock".to_string())?;
-    let roots = db
-        .list_scan_roots_with_kind(kind.as_deref())
-        .map_err(|e| e.to_string())?;
+) -> Result<Vec<FolderDto>, CommandError> {
+    let db = state.lock_library()?;
+    let roots = db.list_scan_roots_with_kind(kind.as_deref())?;
     let mut out = Vec::new();
     for (path, root_kind) in roots {
         let name = Path::new(&path)
@@ -54,9 +63,7 @@ pub fn list_folders(
             .and_then(|s| s.to_str())
             .unwrap_or(&path)
             .to_string();
-        let count = db
-            .count_media_under_prefix(&path)
-            .map_err(|e| e.to_string())?;
+        let count = db.count_media_under_prefix(&path)?;
         out.push(FolderDto {
             name,
             path,
@@ -67,51 +74,67 @@ pub fn list_folders(
     Ok(out)
 }
 
+/// Scan on a dedicated SQLite connection so the managed `library` mutex stays free.
 #[tauri::command]
-pub fn add_library_folder(
+pub async fn add_library_folder(
     state: State<'_, AppState>,
     path: String,
     kind: String,
-) -> Result<u64, String> {
-    let db = state.library.lock().map_err(|_| "library lock".to_string())?;
-    let n = scan_root(&db, Path::new(&path), &kind).map_err(|e| e.to_string())?;
-    Ok(n as u64)
+) -> Result<u64, CommandError> {
+    let db_path = state.library_db_path();
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = LibraryDb::open(&db_path)?;
+        let n = scan_root(&db, Path::new(&path), &kind)?;
+        Ok(n as u64)
+    })
+    .await
+    .map_err(|e| CommandError::Join(e.to_string()))?
 }
 
 #[tauri::command]
-pub fn rescan_library(state: State<'_, AppState>) -> Result<u64, String> {
-    let db = state.library.lock().map_err(|_| "library lock".to_string())?;
-    let roots = db.list_scan_roots(None).map_err(|e| e.to_string())?;
-    let mut total = 0u64;
-    for root in roots {
-        // Re-scan as "video" for roots of unknown kind — list_scan_roots returns paths only.
-        // Prefer kind from section: try video then audio if zero.
-        let n = scan_root(&db, Path::new(&root), "video").map_err(|e| e.to_string())? as u64;
-        total += n;
-        if n == 0 {
-            total += scan_root(&db, Path::new(&root), "audio").map_err(|e| e.to_string())? as u64;
+pub async fn rescan_library(state: State<'_, AppState>) -> Result<u64, CommandError> {
+    let db_path = state.library_db_path();
+    // Snapshot roots under a short lock, then scan on a separate connection.
+    let roots = {
+        let db = state.lock_library()?;
+        db.list_scan_roots_with_kind(None)?
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = LibraryDb::open(&db_path)?;
+        let mut total = 0u64;
+        for (root, kind) in roots {
+            let kind = if kind.is_empty() {
+                "video".into()
+            } else {
+                kind
+            };
+            let n = scan_root(&db, Path::new(&root), &kind)? as u64;
+            total += n;
+            if n == 0 && kind == "video" {
+                total += scan_root(&db, Path::new(&root), "audio")? as u64;
+            }
         }
-    }
-    Ok(total)
+        Ok(total)
+    })
+    .await
+    .map_err(|e| CommandError::Join(e.to_string()))?
 }
 
 #[tauri::command]
-pub fn list_playlists(state: State<'_, AppState>) -> Result<Vec<Playlist>, String> {
-    let db = state.library.lock().map_err(|_| "library lock".to_string())?;
-    db.list_playlists().map_err(|e| e.to_string())
+pub fn list_playlists(state: State<'_, AppState>) -> Result<Vec<Playlist>, CommandError> {
+    Ok(state.lock_library()?.list_playlists()?)
 }
 
 #[tauri::command]
-pub fn create_playlist(state: State<'_, AppState>, name: String) -> Result<Playlist, String> {
-    let db = state.library.lock().map_err(|_| "library lock".to_string())?;
-    let id = db.create_playlist(&name).map_err(|e| e.to_string())?;
+pub fn create_playlist(state: State<'_, AppState>, name: String) -> Result<Playlist, CommandError> {
+    let db = state.lock_library()?;
+    let id = db.create_playlist(&name)?;
     Ok(Playlist { id, name })
 }
 
 #[tauri::command]
-pub fn delete_playlist(state: State<'_, AppState>, id: i64) -> Result<(), String> {
-    let db = state.library.lock().map_err(|_| "library lock".to_string())?;
-    db.delete_playlist(id).map_err(|e| e.to_string())
+pub fn delete_playlist(state: State<'_, AppState>, id: i64) -> Result<(), CommandError> {
+    Ok(state.lock_library()?.delete_playlist(id)?)
 }
 
 #[tauri::command]
@@ -119,15 +142,13 @@ pub fn rename_playlist(
     state: State<'_, AppState>,
     id: i64,
     name: String,
-) -> Result<(), String> {
-    let db = state.library.lock().map_err(|_| "library lock".to_string())?;
-    db.rename_playlist(id, &name).map_err(|e| e.to_string())
+) -> Result<(), CommandError> {
+    Ok(state.lock_library()?.rename_playlist(id, &name)?)
 }
 
 #[tauri::command]
-pub fn playlist_items(state: State<'_, AppState>, id: i64) -> Result<Vec<MediaItem>, String> {
-    let db = state.library.lock().map_err(|_| "library lock".to_string())?;
-    db.list_playlist_media(id).map_err(|e| e.to_string())
+pub fn playlist_items(state: State<'_, AppState>, id: i64) -> Result<Vec<MediaItem>, CommandError> {
+    Ok(state.lock_library()?.list_playlist_media(id)?)
 }
 
 #[tauri::command]
@@ -135,74 +156,68 @@ pub fn add_to_playlist(
     state: State<'_, AppState>,
     playlist_id: i64,
     media_id: i64,
-) -> Result<(), String> {
-    let db = state.library.lock().map_err(|_| "library lock".to_string())?;
-    db.add_to_playlist(playlist_id, media_id)
-        .map_err(|e| e.to_string())
+) -> Result<(), CommandError> {
+    Ok(state
+        .lock_library()?
+        .add_to_playlist(playlist_id, media_id)?)
 }
 
 #[tauri::command]
-pub fn continue_watching(state: State<'_, AppState>) -> Result<Vec<serde_json::Value>, String> {
+pub fn continue_watching(
+    state: State<'_, AppState>,
+) -> Result<Vec<ContinueWatchingItem>, CommandError> {
     let resumes = {
-        let store = state
-            .settings
-            .lock()
-            .map_err(|_| "settings lock".to_string())?;
-        store.load_resume_positions().map_err(|e| e.to_string())?
+        let store = state.lock_settings()?;
+        store.load_resume_positions()?
     };
-    let db = state.library.lock().map_err(|_| "library lock".to_string())?;
+    let db = state.lock_library()?;
     let mut out = Vec::new();
     let mut pairs: Vec<_> = resumes.into_iter().collect();
     pairs.sort_by(|a, b| {
-        b.1 .1
-            .cmp(&a.1 .1)
-            .then_with(|| {
-                b.1 .0
-                    .partial_cmp(&a.1 .0)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
+        b.1 .1.cmp(&a.1 .1).then_with(|| {
+            b.1 .0
+                .partial_cmp(&a.1 .0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
     });
     for (path, (pos, _time_ms)) in pairs.into_iter().take(24) {
-        if let Some(item) = db
-            .get_media_by_path(&path)
-            .map_err(|e| e.to_string())?
-        {
-            out.push(serde_json::json!({
-                "id": item.id,
-                "title": item.title,
-                "path": item.path,
-                "progress": pos,
-                "durationMs": item.duration_ms,
-                "mediaType": item.media_type,
-                "artworkPath": item.artwork_path,
-            }));
+        if let Some(item) = db.get_media_by_path(&path)? {
+            out.push(ContinueWatchingItem {
+                id: Some(item.id),
+                title: item.title,
+                path: item.path,
+                progress: pos,
+                duration_ms: item.duration_ms,
+                media_type: item.media_type,
+                artwork_path: item.artwork_path,
+            });
         } else {
             let title = Path::new(&path)
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or(&path)
                 .to_string();
-            out.push(serde_json::json!({
-                "id": null,
-                "title": title,
-                "path": path,
-                "progress": pos,
-                "durationMs": null,
-                "mediaType": "video",
-                "artworkPath": null,
-            }));
+            out.push(ContinueWatchingItem {
+                id: None,
+                title,
+                path,
+                progress: pos,
+                duration_ms: None,
+                media_type: MediaType::Video,
+                artwork_path: None,
+            });
         }
     }
     Ok(out)
 }
 
 #[tauri::command]
-pub fn touch_recent(state: State<'_, AppState>, media_id: i64) -> Result<(), String> {
+pub fn touch_recent(state: State<'_, AppState>, media_id: i64) -> Result<(), CommandError> {
     let settings = state.load_settings();
     if !settings.prefs.save_recent {
         return Ok(());
     }
-    let db = state.library.lock().map_err(|_| "library lock".to_string())?;
+    let db = state.lock_library()?;
     let filter = settings.prefs.recent_filter_regex.trim();
     if !filter.is_empty() {
         if let Ok(Some(item)) = db.get_media_by_id(media_id) {
@@ -214,5 +229,5 @@ pub fn touch_recent(state: State<'_, AppState>, media_id: i64) -> Result<(), Str
             }
         }
     }
-    db.touch_recent(media_id).map_err(|e| e.to_string())
+    Ok(db.touch_recent(media_id)?)
 }

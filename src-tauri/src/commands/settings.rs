@@ -1,26 +1,23 @@
 //! Settings persistence commands.
 
+use crate::error::CommandError;
 use crate::state::AppState;
 use settings::{AppSettings, ThemePreference};
 use tauri::State;
 
 #[tauri::command]
-pub fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
-    let store = state
-        .settings
-        .lock()
-        .map_err(|_| "settings lock".to_string())?;
-    store.load().map_err(|e| e.to_string())
+pub fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, CommandError> {
+    Ok(state.lock_settings()?.load()?)
 }
 
 #[tauri::command]
-pub fn save_settings(state: State<'_, AppState>, settings: AppSettings) -> Result<(), String> {
+pub fn save_settings(
+    state: State<'_, AppState>,
+    settings: AppSettings,
+) -> Result<(), CommandError> {
     {
-        let store = state
-            .settings
-            .lock()
-            .map_err(|_| "settings lock".to_string())?;
-        store.save(&settings).map_err(|e| e.to_string())?;
+        let store = state.lock_settings()?;
+        store.save(&settings)?;
     }
 
     // Live-apply session prefs when media is already open (picture, rate, delays…).
@@ -35,46 +32,35 @@ pub fn save_settings(state: State<'_, AppState>, settings: AppSettings) -> Resul
 }
 
 #[tauri::command]
-pub fn set_theme(state: State<'_, AppState>, theme: String) -> Result<(), String> {
-    let store = state
-        .settings
-        .lock()
-        .map_err(|_| "settings lock".to_string())?;
-    let mut s = store.load().map_err(|e| e.to_string())?;
+pub fn set_theme(state: State<'_, AppState>, theme: String) -> Result<(), CommandError> {
+    let store = state.lock_settings()?;
+    let mut s = store.load()?;
     s.theme = match theme.to_ascii_lowercase().as_str() {
         "light" => ThemePreference::Light,
         "dark" => ThemePreference::Dark,
         _ => ThemePreference::System,
     };
-    store.save(&s).map_err(|e| e.to_string())
+    Ok(store.save(&s)?)
 }
 
 #[tauri::command]
-pub fn set_language(state: State<'_, AppState>, language: String) -> Result<(), String> {
-    let store = state
-        .settings
-        .lock()
-        .map_err(|_| "settings lock".to_string())?;
-    let mut s = store.load().map_err(|e| e.to_string())?;
+pub fn set_language(state: State<'_, AppState>, language: String) -> Result<(), CommandError> {
+    let store = state.lock_settings()?;
+    let mut s = store.load()?;
     s.language = language;
-    store.save(&s).map_err(|e| e.to_string())
+    Ok(store.save(&s)?)
 }
 
 /// Clear recently played + resume positions (Privacy → Clear history).
 #[tauri::command]
-pub fn clear_history(state: State<'_, AppState>) -> Result<(), String> {
+pub fn clear_history(state: State<'_, AppState>) -> Result<(), CommandError> {
     {
-        let db = state.library.lock().map_err(|_| "library lock".to_string())?;
-        db.clear_recent().map_err(|e| e.to_string())?;
+        let db = state.lock_library()?;
+        db.clear_recent()?;
     }
     {
-        let store = state
-            .settings
-            .lock()
-            .map_err(|_| "settings lock".to_string())?;
-        store
-            .save_resume_positions(&std::collections::HashMap::new())
-            .map_err(|e| e.to_string())?;
+        let store = state.lock_settings()?;
+        store.save_resume_positions(&std::collections::HashMap::new())?;
     }
     Ok(())
 }

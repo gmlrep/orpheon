@@ -36,5 +36,18 @@ export default defineConfig(() => ({
     environment: "happy-dom",
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.{test,spec}.ts"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "lcov", "json-summary"],
+      include: ["src/**/*.{ts,vue}"],
+      exclude: ["src/**/*.{test,spec}.ts", "src/test/**", "src/main.ts", "src/vite-env.d.ts"],
+      // Floor against regressions; raise as unit coverage grows.
+      thresholds: {
+        lines: 20,
+        functions: 15,
+        branches: 15,
+        statements: 20,
+      },
+    },
   },
 }));
