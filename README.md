@@ -53,6 +53,9 @@ True-black flat shell from `.taste-skill`: amber `#d37918` only on progress/seek
 ## Packaging
 
 ```powershell
+# vendor/vlc must exist first (scripts/vendor-libvlc.ps1 or ci-prepare-vlc.ps1)
 npm run tauri:build
+# MSI/NSIS already embed libVLC via bundle.resources
+# Optional portable folder:
 .\scripts\bundle-libvlc.ps1 -OutDir dist\win -ExeSource (Get-ChildItem -Recurse src-tauri\target\release\Orpheon.exe | Select-Object -First 1 -Expand FullName)
 ```

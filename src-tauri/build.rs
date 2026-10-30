@@ -49,8 +49,10 @@ fn main() {
     )
     .expect("tauri-build failed");
 
-    // Copy vendored libVLC next to the binary so Windows finds DLLs at process start
+    // Copy vendored libVLC next to the cargo binary so `tauri dev` / running
+    // `target/<profile>/Orpheon.exe` finds DLLs at process start
     // (STATUS_DLL_NOT_FOUND happens before Rust `main` can fix PATH).
+    // Installers (MSI/NSIS) get the same files via `bundle.resources` in tauri.conf.json.
     if std::env::var_os("CARGO_FEATURE_VLC").is_some() {
         if let Err(e) = copy_vendored_libvlc() {
             println!("cargo:warning=libVLC vendor copy failed: {e}");
