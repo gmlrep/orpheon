@@ -22,7 +22,7 @@ mod waveform_sample;
 pub use equalizer::{EqGains, Equalizer, BAND_LABELS};
 pub use error::LibVlcError;
 pub use instance::{HwAccelMode, Instance};
-pub use media::Media;
+pub use media::{path_for_libvlc, Media};
 pub use player::{MediaMetaSnapshot, MediaPlayer};
 pub use video_frame::{
     cap_dimensions, soft_blit_cap, FrameBuffer, VideoFrameState, MAX_SOFT_HEIGHT, MAX_SOFT_WIDTH,

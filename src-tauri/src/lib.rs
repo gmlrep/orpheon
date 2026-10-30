@@ -120,6 +120,7 @@ pub fn run() {
             commands::list_recent_media,
             commands::list_folders,
             commands::add_library_folder,
+            commands::default_media_folders,
             commands::rescan_library,
             commands::list_playlists,
             commands::create_playlist,
@@ -222,6 +223,8 @@ fn configure_vlc_runtime() {
 
     for dir in candidates {
         let dir = dir.canonicalize().unwrap_or(dir);
+        // Avoid `\\?\…` in env vars — libVLC plugin loader rejects them.
+        let dir = strip_verbatim_prefix(dir);
         let plugins = dir.join("plugins");
         if plugins.is_dir() {
             std::env::set_var("VLC_PLUGIN_PATH", &plugins);
@@ -233,4 +236,18 @@ fn configure_vlc_runtime() {
             break;
         }
     }
+}
+
+fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let s = path.to_string_lossy();
+        if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+            return PathBuf::from(format!(r"\\{rest}"));
+        }
+        if let Some(rest) = s.strip_prefix(r"\\?\") {
+            return PathBuf::from(rest);
+        }
+    }
+    path
 }

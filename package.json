@@ -1,7 +1,7 @@
 {
   "name": "orpheon",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "license": "GPL-2.0-or-later",
   "type": "module",
   "scripts": {
@@ -16,6 +16,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "stage:vlc": "pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/stage-vlc-for-bundle.ps1",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"

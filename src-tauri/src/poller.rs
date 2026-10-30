@@ -119,8 +119,13 @@ fn poll_loop(app: AppHandle) {
                     if s.active {
                         s.paused = !playing;
                         s.position = position;
-                        s.time_ms = time_ms;
-                        s.length_ms = length_ms;
+                        // libVLC returns -1 while length is unknown — keep prior/seeded value.
+                        if time_ms >= 0 {
+                            s.time_ms = time_ms;
+                        }
+                        if length_ms > 0 {
+                            s.length_ms = length_ms;
+                        }
                         if let Some(ref meta) = meta {
                             if apply_stream_meta(&mut s, meta) {
                                 enrich =

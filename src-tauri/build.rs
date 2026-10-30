@@ -20,6 +20,7 @@ const APP_COMMANDS: &[&str] = &[
     "list_recent_media",
     "list_folders",
     "add_library_folder",
+    "default_media_folders",
     "rescan_library",
     "list_playlists",
     "create_playlist",

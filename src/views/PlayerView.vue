@@ -95,10 +95,11 @@ const { scheduleSync } = useVideoStage({
 scheduleSyncRef.value = scheduleSync;
 
 const durationLabel = computed(() => {
-  if (!showRemaining.value) return formatDuration(session.value.lengthMs);
-  const left = Math.max(0, session.value.lengthMs - session.value.timeMs);
-  const s = formatDuration(left);
-  return s === "—" ? s : `-${s}`;
+  const len = session.value.lengthMs;
+  if (!(len > 0)) return "—";
+  if (!showRemaining.value) return formatDuration(len);
+  const left = Math.max(0, len - session.value.timeMs);
+  return `-${formatDuration(left)}`;
 });
 
 function openTab(tab: "video" | "audio" | "subs") {
@@ -142,8 +143,7 @@ onBeforeUnmount(() => {
       @mousemove="onStageMove"
     >
       <div v-if="isMusic" class="music-stage">
-        <img v-if="coverSrc" class="music-art" :src="coverSrc" alt="" />
-        <div v-else class="music-art music-art--empty" />
+        <img class="music-art" :src="coverSrc" alt="" />
         <strong class="music-title">{{ session.title }}</strong>
         <span class="music-subtitle">{{ session.subtitle }}</span>
       </div>

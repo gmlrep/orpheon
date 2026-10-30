@@ -4,7 +4,7 @@ use crate::error::CommandError;
 use crate::state::AppState;
 use library::{scan_root, LibraryDb, MediaItem, MediaType, Playlist};
 use serde::Serialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tauri::State;
 
 #[derive(Debug, Clone, Serialize)]
@@ -26,6 +26,60 @@ pub struct ContinueWatchingItem {
     pub duration_ms: Option<i64>,
     pub media_type: MediaType,
     pub artwork_path: Option<String>,
+}
+
+/// Known-folder hint for onboarding (localized Music / Videos via OS APIs).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaFolderHint {
+    /// Absolute path from the OS known-folder API (localized folder name).
+    pub path: String,
+    /// `true` when the path exists and is a directory.
+    pub valid: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DefaultMediaFolders {
+    pub music: Option<MediaFolderHint>,
+    pub videos: Option<MediaFolderHint>,
+}
+
+fn folder_hint(path: Option<&Path>) -> Option<MediaFolderHint> {
+    let path = path?;
+    let path_buf = PathBuf::from(path);
+    // Prefer canonical path when the folder exists (stable casing / junctions).
+    let (display, valid) = if path_buf.is_dir() {
+        let canon = path_buf
+            .canonicalize()
+            .unwrap_or(path_buf)
+            .to_string_lossy()
+            .into_owned();
+        // Windows canonicalize may prefix `\\?\` — strip for UI / dialogs.
+        let display = canon.strip_prefix(r"\\?\").unwrap_or(&canon).to_string();
+        (display, true)
+    } else {
+        (path_buf.to_string_lossy().into_owned(), false)
+    };
+    Some(MediaFolderHint {
+        path: display,
+        valid,
+    })
+}
+
+/// Resolve the current user's Music and Videos folders (language-independent).
+#[tauri::command]
+pub fn default_media_folders() -> DefaultMediaFolders {
+    let Some(dirs) = directories::UserDirs::new() else {
+        return DefaultMediaFolders {
+            music: None,
+            videos: None,
+        };
+    };
+    DefaultMediaFolders {
+        music: folder_hint(dirs.audio_dir()),
+        videos: folder_hint(dirs.video_dir()),
+    }
 }
 
 #[tauri::command]
@@ -180,8 +234,12 @@ pub fn continue_watching(
                 .unwrap_or(std::cmp::Ordering::Equal)
         })
     });
-    for (path, (pos, _time_ms)) in pairs.into_iter().take(24) {
+    for (path, (pos, _time_ms)) in pairs.into_iter().take(48) {
         if let Some(item) = db.get_media_by_path(&path)? {
+            // Continue watching lists video only (audio is never resumed).
+            if item.media_type != MediaType::Video {
+                continue;
+            }
             out.push(ContinueWatchingItem {
                 id: Some(item.id),
                 title: item.title,
@@ -192,6 +250,14 @@ pub fn continue_watching(
                 artwork_path: item.artwork_path,
             });
         } else {
+            let ext = Path::new(&path)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            if library::is_audio_extension(&ext) {
+                continue;
+            }
             let title = Path::new(&path)
                 .file_stem()
                 .and_then(|s| s.to_str())
@@ -206,6 +272,9 @@ pub fn continue_watching(
                 media_type: MediaType::Video,
                 artwork_path: None,
             });
+        }
+        if out.len() >= 24 {
+            break;
         }
     }
     Ok(out)

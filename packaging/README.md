@@ -10,7 +10,7 @@ Prereq: populate `vendor/vlc` (DLLs + `plugins/`) via `.\scripts\vendor-libvlc.p
 npm run tauri:build
 ```
 
-libVLC is packaged into installers via `bundle.resources` in `src-tauri/tauri.conf.json` (`libvlc.dll`, `libvlccore.dll`, `plugins/` next to `Orpheon.exe` — same layout as portable).
+libVLC is packaged into installers via `bundle.resources` in `src-tauri/tauri.conf.json` (`libvlc.dll`, `libvlccore.dll`, `plugins/` next to `Orpheon.exe` — same layout as portable). Before bundling, `beforeBundleCommand` runs `scripts/stage-vlc-for-bundle.ps1` into `src-tauri/vlc-runtime/` (gitignored).
 
 2. Optional portable zip (same layout, no installer):
 
@@ -24,7 +24,7 @@ $exe = Get-ChildItem -Recurse src-tauri\target\release\Orpheon.exe | Select-Obje
 - **CI** (`.github/workflows/ci.yml`): on `push`/`pull_request` to `main`/`master` — typecheck, Vitest (`npm run test:run`), `cargo test`, Tauri Windows build, portable artifact upload.
 - **Release** (`.github/workflows/release.yml`): on tag `v*` (e.g. `git tag v0.1.0 && git push origin v0.1.0`) — builds Windows portable zip (+ MSI/NSIS if produced) and publishes a GitHub Release.
 
-CI prepares `vendor/vlc` via `scripts/ci-prepare-vlc.ps1` (system VLC or VideoLAN win64 zip).
+CI prepares `vendor/vlc` via `scripts/ci-prepare-vlc.ps1`, stages `src-tauri/vlc-runtime`, then after bundling runs `scripts/verify-installer-vlc.ps1` (msiexec extract of the MSI — DLLs are inside the package, not loose under `bundle/`).
 
 ## Notes
 

@@ -40,7 +40,17 @@ export default defineConfig(() => ({
       provider: "v8",
       reporter: ["text", "lcov", "json-summary"],
       include: ["src/**/*.{ts,vue}"],
-      exclude: ["src/**/*.{test,spec}.ts", "src/test/**", "src/main.ts", "src/vite-env.d.ts"],
+      exclude: [
+        "src/**/*.{test,spec}.ts",
+        "src/test/**",
+        "src/main.ts",
+        "src/vite-env.d.ts",
+        // Large first-run / shell surfaces — covered by manual + e2e later.
+        "src/popups/**",
+        "src/components/OnboardingModal.vue",
+        "src/composables/useAppMenus.ts",
+        "src/utils/popupWindows.ts",
+      ],
       // Floor against regressions; raise as unit coverage grows.
       thresholds: {
         lines: 20,

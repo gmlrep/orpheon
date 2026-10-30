@@ -1,6 +1,6 @@
 [package]
 name = "orpheon"
-version = "0.1.1"
+version = "0.1.2"
 description = "Orpheon — local media player powered by libVLC"
 authors = ["Orpheon Contributors"]
 edition = "2021"
@@ -54,7 +54,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 license = "GPL-2.0-or-later"
 authors = ["Orpheon Contributors"]

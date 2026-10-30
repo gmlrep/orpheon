@@ -2,8 +2,27 @@
 
 use crate::{Instance, LibVlcError, Result};
 use std::ffi::CString;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::ptr;
+
+/// Strip Windows verbatim prefixes (`\\?\C:\…`, `\\?\UNC\…`) that libVLC cannot open.
+///
+/// `Path::canonicalize()` on Windows returns these forms; pass the result through
+/// here before `libvlc_media_new_path` / plugin PATH env vars.
+#[must_use]
+pub fn path_for_libvlc(path: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let s = path.to_string_lossy();
+        if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+            return PathBuf::from(format!(r"\\{rest}"));
+        }
+        if let Some(rest) = s.strip_prefix(r"\\?\") {
+            return PathBuf::from(rest);
+        }
+    }
+    path.to_path_buf()
+}
 
 /// A playable media item (file or network MRL).
 pub struct Media {
@@ -18,6 +37,7 @@ impl Media {
     /// # Errors
     /// Returns [`LibVlcError::MediaCreate`] or [`LibVlcError::Nul`].
     pub fn from_path(instance: &Instance, path: &Path) -> Result<Self> {
+        let path = path_for_libvlc(path);
         let path_str = path.to_string_lossy();
         let c_path = CString::new(path_str.as_ref())?;
         // SAFETY: instance is valid; c_path is NUL-terminated.

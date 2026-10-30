@@ -40,6 +40,7 @@ const defaults = (): AppSettings => ({
   resume_playback: true,
   language: DEFAULT_LANGUAGE,
   vlc_options: [],
+  onboarding_done: false,
   prefs: {},
 });
 

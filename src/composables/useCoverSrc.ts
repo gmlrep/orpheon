@@ -1,11 +1,13 @@
 import { computed, type Ref } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { DEFAULT_COVER_SRC } from "../assets/defaultCover";
 import { sanitizeArtworkUrl } from "../utils/mediaUrl";
 
 /**
  * Resolve cover art for `<img src>`.
  * - Remote stream art: `http(s)` only
  * - Local cache paths from the artwork pipeline: `convertFileSrc`
+ * - Missing / rejected → `null` (use {@link resolveCoverSrc} for the bundled default)
  */
 export function resolveMediaSrc(path: string | null | undefined): string | null {
   if (!path) return null;
@@ -23,6 +25,11 @@ export function resolveMediaSrc(path: string | null | undefined): string | null 
   return convertFileSrc(trimmed.replace(/\\/g, "/"));
 }
 
+/** Like {@link resolveMediaSrc}, but never empty — falls back to bundled default cover. */
+export function resolveCoverSrc(path: string | null | undefined): string {
+  return resolveMediaSrc(path) ?? DEFAULT_COVER_SRC;
+}
+
 export function useCoverSrc(coverPath: Ref<string | null | undefined>) {
-  return computed(() => resolveMediaSrc(coverPath.value));
+  return computed(() => resolveCoverSrc(coverPath.value));
 }

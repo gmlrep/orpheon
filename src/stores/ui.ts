@@ -9,6 +9,8 @@ export const useUiStore = defineStore("ui", () => {
   const settingsCat = shallowRef("general");
   const fullscreen = shallowRef(false);
   const uiHidden = shallowRef(false);
+  const notice = shallowRef<string | null>(null);
+  let noticeTimer: ReturnType<typeof setTimeout> | null = null;
   /** Sidebar mode to restore after leaving fullscreen. */
   let sidebarBeforeFullscreen: SidebarMode | null = null;
 
@@ -53,6 +55,15 @@ export const useUiStore = defineStore("ui", () => {
     uiHidden.value = !uiHidden.value;
   }
 
+  function flash(message: string, ms = 2800) {
+    notice.value = message;
+    if (noticeTimer) clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => {
+      notice.value = null;
+      noticeTimer = null;
+    }, ms);
+  }
+
   function setFullscreen(value: boolean) {
     if (value === fullscreen.value) return;
     fullscreen.value = value;
@@ -74,12 +85,14 @@ export const useUiStore = defineStore("ui", () => {
     settingsCat,
     fullscreen,
     uiHidden,
+    notice,
     sideToggleState,
     cycleSidebar,
     navigate,
     setSettingsCat,
     setUiHidden,
     toggleUiHidden,
+    flash,
     setFullscreen,
   };
 });

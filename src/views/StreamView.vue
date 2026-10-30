@@ -4,9 +4,8 @@ import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
 import { usePlaybackStore } from "../stores/playback";
 import { useStreamsStore } from "../stores/streams";
-import { resolveMediaSrc } from "../composables/useCoverSrc";
+import { resolveCoverSrc } from "../composables/useCoverSrc";
 import AppIcon from "../components/AppIcon.vue";
-import MediaThumb from "../components/MediaThumb.vue";
 import type { SavedStream } from "../types";
 
 defineOptions({ name: "StreamView" });
@@ -69,8 +68,8 @@ async function removeSaved(item: SavedStream) {
   }
 }
 
-function artSrc(item: SavedStream) {
-  return resolveMediaSrc(item.artworkUrl);
+function artSrc(artworkUrl?: string | null) {
+  return resolveCoverSrc(artworkUrl);
 }
 </script>
 
@@ -107,12 +106,7 @@ function artSrc(item: SavedStream) {
 
     <div v-if="session.active && session.path.includes('://')" class="now-stream">
       <div class="now-stream-art">
-        <img
-          v-if="resolveMediaSrc(session.artworkUrl)"
-          :src="resolveMediaSrc(session.artworkUrl)!"
-          alt=""
-        />
-        <MediaThumb v-else :title="session.title" :seed="session.path" :wide="false" />
+        <img :src="artSrc(session.artworkUrl)" alt="" />
       </div>
       <div class="now-stream-meta">
         <strong>{{ session.title }}</strong>
@@ -137,8 +131,7 @@ function artSrc(item: SavedStream) {
       <div v-for="item in saved" :key="item.mrl" class="stream-row">
         <button type="button" class="stream-main" @click="openStream(item)">
           <span class="stream-thumb">
-            <img v-if="artSrc(item)" :src="artSrc(item)!" alt="" />
-            <MediaThumb v-else :title="item.title" :seed="item.mrl" :wide="false" />
+            <img :src="artSrc(item.artworkUrl)" alt="" />
           </span>
           <span class="stream-meta">
             <strong>{{ item.title }}</strong>
