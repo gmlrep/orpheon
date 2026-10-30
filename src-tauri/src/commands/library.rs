@@ -56,10 +56,7 @@ fn folder_hint(path: Option<&Path>) -> Option<MediaFolderHint> {
             .to_string_lossy()
             .into_owned();
         // Windows canonicalize may prefix `\\?\` — strip for UI / dialogs.
-        let display = canon
-            .strip_prefix(r"\\?\")
-            .unwrap_or(&canon)
-            .to_string();
+        let display = canon.strip_prefix(r"\\?\").unwrap_or(&canon).to_string();
         (display, true)
     } else {
         (path_buf.to_string_lossy().into_owned(), false)

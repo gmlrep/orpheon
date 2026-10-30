@@ -191,8 +191,7 @@ export default {
     description:
       "Orpheon — a modern media player UI built with Tauri, Vue, and libVLC.\nVideoLAN is a non-profit project.",
     tauri: "Tauri {version}",
-    license:
-      "This program comes with ABSOLUTELY NO WARRANTY.\nLicensed under the GNU GPL.",
+    license: "This program comes with ABSOLUTELY NO WARRANTY.\nLicensed under the GNU GPL.",
   },
   shortcuts: {
     playPause: "Play / Pause",
@@ -237,7 +236,8 @@ export default {
     videosFolder: "Videos folder",
     musicPlaceholder: "Select your Music folder",
     videosPlaceholder: "Select your Videos folder",
-    pathMissing: "This folder was not found on disk — uncheck default paths and pick another folder.",
+    pathMissing:
+      "This folder was not found on disk — uncheck default paths and pick another folder.",
     continue: "Get started",
     skip: "Skip for now",
   },

@@ -35,7 +35,12 @@ async function close() {
   <div class="about">
     <header class="about-bar" data-tauri-drag-region>
       <span class="about-title">{{ t("menu.about") }}</span>
-      <button type="button" class="icon-btn win-close" :aria-label="t('common.close')" @click="close">
+      <button
+        type="button"
+        class="icon-btn win-close"
+        :aria-label="t('common.close')"
+        @click="close"
+      >
         <AppIcon name="close" :size="14" />
       </button>
     </header>

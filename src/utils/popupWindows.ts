@@ -1,9 +1,5 @@
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import {
-  cursorPosition,
-  monitorFromPoint,
-  getCurrentWindow,
-} from "@tauri-apps/api/window";
+import { cursorPosition, monitorFromPoint, getCurrentWindow } from "@tauri-apps/api/window";
 
 export const POPUP_LABELS = {
   about: "about",

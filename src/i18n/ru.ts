@@ -191,8 +191,7 @@ export default {
     description:
       "Orpheon — современный медиаплеер на Tauri, Vue и libVLC.\nVideoLAN — некоммерческий проект.",
     tauri: "Tauri {version}",
-    license:
-      "Программа предоставляется БЕЗ КАКИХ-ЛИБО ГАРАНТИЙ.\nЛицензия GNU GPL.",
+    license: "Программа предоставляется БЕЗ КАКИХ-ЛИБО ГАРАНТИЙ.\nЛицензия GNU GPL.",
   },
   shortcuts: {
     playPause: "Воспроизведение / пауза",

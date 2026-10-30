@@ -55,11 +55,7 @@ async function browse() {
       :disabled="disabled"
       :grow="grow"
     />
-    <GhostButton
-      :label="browseLabel ?? t('common.browse')"
-      :disabled="disabled"
-      @click="browse"
-    >
+    <GhostButton :label="browseLabel ?? t('common.browse')" :disabled="disabled" @click="browse">
       {{ browseLabel ?? t("common.browse") }}
     </GhostButton>
   </div>

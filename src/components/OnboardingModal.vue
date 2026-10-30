@@ -95,12 +95,7 @@ async function finish(skipFolders: boolean) {
 
 <template>
   <div class="onboard-scrim" role="presentation">
-    <div
-      class="onboard-card"
-      role="dialog"
-      aria-modal="true"
-      :aria-label="t('onboarding.title')"
-    >
+    <div class="onboard-card" role="dialog" aria-modal="true" :aria-label="t('onboarding.title')">
       <p class="step">{{ t("onboarding.step", { n: 1, total: 1 }) }}</p>
       <h1 class="title">{{ t("onboarding.title") }}</h1>
       <p class="lead">{{ t("onboarding.lead") }}</p>
