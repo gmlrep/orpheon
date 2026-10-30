@@ -85,7 +85,10 @@ jobs:
 
       - name: Prepare vendored libVLC
         shell: pwsh
-        run: .\scripts\ci-prepare-vlc.ps1
+        run: |
+          .\scripts\ci-prepare-vlc.ps1
+          # tauri-build validates bundle.resources at compile time (clippy/test too).
+          .\scripts\stage-vlc-for-bundle.ps1
 
       - name: rustfmt
         working-directory: src-tauri
