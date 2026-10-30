@@ -8,8 +8,6 @@ on:
       - "docs/**"
       - "LICENSE*"
       - "COPYING*"
-      - "AUTHORS*"
-      - "THANKS*"
       - ".gitignore"
   pull_request:
     branches: [master, main]
@@ -18,8 +16,6 @@ on:
       - "docs/**"
       - "LICENSE*"
       - "COPYING*"
-      - "AUTHORS*"
-      - "THANKS*"
       - ".gitignore"
   workflow_dispatch:
     inputs:

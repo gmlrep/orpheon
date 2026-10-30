@@ -32,7 +32,7 @@ if (Test-Path $pluginsDst) {
 }
 Copy-Item $pluginsSrc $pluginsDst -Recurse -Force
 
-foreach ($name in @("COPYING.txt", "AUTHORS.txt", "THANKS.txt", "NEWS.txt")) {
+foreach ($name in @("COPYING.txt", "COPYING.LGPLv2.1")) {
     $src = Join-Path $VlcDir $name
     if (Test-Path $src) {
         Copy-Item $src $OutDir -Force
