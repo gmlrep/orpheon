@@ -16,6 +16,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "stage:vlc": "pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/stage-vlc-for-bundle.ps1",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
