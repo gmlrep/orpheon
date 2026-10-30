@@ -39,6 +39,13 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": {
+      "../vendor/vlc/libvlc.dll": "libvlc.dll",
+      "../vendor/vlc/libvlccore.dll": "libvlccore.dll",
+      "../vendor/vlc/plugins/": "plugins/",
+      "../vendor/vlc/COPYING.txt": "COPYING.VideoLAN.txt",
+      "../vendor/vlc/COPYING.LGPLv2.1": "COPYING.LGPLv2.1.txt"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

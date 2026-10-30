@@ -178,6 +178,31 @@ jobs:
       - name: Build Tauri (Windows release)
         run: npm run tauri:build
 
+      - name: Verify installers include libVLC
+        shell: pwsh
+        run: |
+          # Ignore target/release/libvlc.dll from build.rs — only check installer package trees.
+          $bundleRoot = "src-tauri\target\release\bundle"
+          if (-not (Test-Path $bundleRoot)) { throw "bundle output missing: $bundleRoot" }
+          $refs = @()
+          $refs += Get-ChildItem -Recurse $bundleRoot -Include *.nsi,*.wxs,*.wixproj,*.xml -ErrorAction SilentlyContinue |
+            Select-String -Pattern "libvlc\.dll" -SimpleMatch:$false -ErrorAction SilentlyContinue
+          $dlls = Get-ChildItem -Recurse $bundleRoot -Filter libvlc.dll -ErrorAction SilentlyContinue
+          if (($refs.Count -eq 0) -and ($dlls.Count -eq 0)) {
+            Write-Host "Bundle tree (first 100 paths):"
+            Get-ChildItem -Recurse $bundleRoot -ErrorAction SilentlyContinue |
+              Select-Object -First 100 -ExpandProperty FullName
+            throw "Installer bundle has no libvlc.dll (and no NSIS/WiX reference) — VLC core would be missing after install"
+          }
+          if ($dlls.Count -gt 0) {
+            Write-Host "libvlc.dll in bundle:"
+            $dlls | ForEach-Object { $_.FullName }
+          }
+          if ($refs.Count -gt 0) {
+            Write-Host "libvlc.dll referenced in installer sources:"
+            $refs | Select-Object -First 20 | ForEach-Object { "$($_.Path):$($_.LineNumber): $($_.Line.Trim())" }
+          }
+
       - name: Bundle portable Windows package
         shell: pwsh
         run: |
@@ -185,6 +210,8 @@ jobs:
             Select-Object -First 1 -ExpandProperty FullName
           if (-not $exe) { throw "Orpheon.exe not found" }
           .\scripts\bundle-libvlc.ps1 -OutDir dist\win -ExeSource $exe
+          if (-not (Test-Path dist\win\libvlc.dll)) { throw "portable package missing libvlc.dll" }
+          if (-not (Test-Path dist\win\plugins)) { throw "portable package missing plugins/" }
           Get-ChildItem dist\win | Format-Table Name, Length
 
       - name: Optional Authenticode signing

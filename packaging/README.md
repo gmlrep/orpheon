@@ -2,20 +2,22 @@
 
 ## Windows
 
-1. Build the app:
+Prereq: populate `vendor/vlc` (DLLs + `plugins/`) via `.\scripts\vendor-libvlc.ps1` or `.\scripts\ci-prepare-vlc.ps1`.
+
+1. Build the app (MSI / NSIS **and** release exe):
 
 ```powershell
 npm run tauri:build
 ```
 
-2. Bundle libVLC next to the exe (DLLs + `plugins/`):
+libVLC is packaged into installers via `bundle.resources` in `src-tauri/tauri.conf.json` (`libvlc.dll`, `libvlccore.dll`, `plugins/` next to `Orpheon.exe` — same layout as portable).
+
+2. Optional portable zip (same layout, no installer):
 
 ```powershell
 $exe = Get-ChildItem -Recurse src-tauri\target\release\Orpheon.exe | Select-Object -First 1 -Expand FullName
 .\scripts\bundle-libvlc.ps1 -OutDir dist\win -ExeSource $exe
 ```
-
-`vendor/vlc` is populated by `.\scripts\vendor-libvlc.ps1` (copies from an installed VLC 3.x).
 
 ## CI / GitHub Releases
 
