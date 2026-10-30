@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, shallowRef, watch } from "vue";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { toneFor } from "../utils/format";
+import { onMounted, shallowRef, watch } from "vue";
+import { invoke } from "@tauri-apps/api/core";
+import { DEFAULT_COVER_SRC } from "../assets/defaultCover";
+import { resolveCoverSrc, resolveMediaSrc } from "../composables/useCoverSrc";
 import { enqueueArt } from "../utils/artQueue";
 
 const {
@@ -22,29 +23,25 @@ const {
   progress?: number;
 }>();
 
-const src = shallowRef<string | null>(null);
-const failed = shallowRef(false);
+void title;
+void seed;
+
+const src = shallowRef(DEFAULT_COVER_SRC);
 /** Session-local negative cache so remounts do not re-invoke while list data is stale. */
 const noArt = shallowRef(false);
-const palette = computed(() => toneFor(seed ?? title));
-
-function toSrc(filePath: string): string {
-  return convertFileSrc(filePath.replace(/\\/g, "/"));
-}
 
 async function load() {
-  failed.value = false;
   // Prefer DB/cached art immediately — never block the grid on ffmpeg/VLC generate.
   // ":none" = backend already tried and found nothing (skip re-spawn).
   if (artworkPath === ":none" || noArt.value) {
-    src.value = null;
+    src.value = DEFAULT_COVER_SRC;
     return;
   }
   if (artworkPath) {
-    src.value = toSrc(artworkPath);
+    src.value = resolveCoverSrc(artworkPath);
     return;
   }
-  src.value = null;
+  src.value = DEFAULT_COVER_SRC;
   if (!path) return;
   try {
     const art = await enqueueArt(() =>
@@ -53,9 +50,17 @@ async function load() {
         mediaId: mediaId ?? null,
       }),
     );
-    if (art) src.value = toSrc(art);
+    if (art && resolveMediaSrc(art)) src.value = resolveCoverSrc(art);
     else noArt.value = true;
   } catch {
+    noArt.value = true;
+    src.value = DEFAULT_COVER_SRC;
+  }
+}
+
+function onImgError() {
+  if (src.value !== DEFAULT_COVER_SRC) {
+    src.value = DEFAULT_COVER_SRC;
     noArt.value = true;
   }
 }
@@ -72,10 +77,7 @@ watch(
 
 <template>
   <div class="art" :class="{ square: !wide }" aria-hidden="true">
-    <img v-if="src && !failed" class="photo" :src="src" alt="" @error="failed = true" />
-    <div v-else class="placeholder" :style="{ background: palette[0] }">
-      <span class="glow" :style="{ background: palette[1] }" />
-    </div>
+    <img class="photo" :src="src" alt="" @error="onImgError" />
     <div v-if="progress != null" class="progress" :style="{ '--p': progress }">
       <i />
     </div>
@@ -98,18 +100,6 @@ watch(
   height: 100%;
   object-fit: cover;
   display: block;
-}
-.placeholder {
-  width: 100%;
-  height: 100%;
-  position: relative;
-}
-.glow {
-  position: absolute;
-  inset: 20% 25%;
-  border-radius: 50%;
-  opacity: 0.25;
-  filter: blur(12px);
 }
 .progress {
   position: absolute;

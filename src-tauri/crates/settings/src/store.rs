@@ -47,6 +47,9 @@ pub struct AppSettings {
     pub language: String,
     /// Extra libVLC option strings (advanced).
     pub vlc_options: Vec<String>,
+    /// First-run library onboarding completed (or skipped).
+    #[serde(default)]
+    pub onboarding_done: bool,
     /// VLC-aligned Tools → Preferences bag.
     #[serde(default)]
     pub prefs: Prefs,
@@ -62,6 +65,7 @@ impl Default for AppSettings {
             resume_playback: true,
             language: "system".into(),
             vlc_options: Vec::new(),
+            onboarding_done: false,
             prefs: Prefs::default(),
         }
     }

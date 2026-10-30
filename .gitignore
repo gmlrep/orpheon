@@ -17,6 +17,8 @@ clippy-out.txt
 # Rust / Tauri
 src-tauri/target
 src-tauri/gen/schemas/*.json
+# Staged by scripts/stage-vlc-for-bundle.ps1 for MSI/NSIS resources
+src-tauri/vlc-runtime/
 
 # Large vendored binaries may be restored via scripts/vendor-libvlc.ps1
 # Keep import lib + VERSION in git if desired; plugins are huge:

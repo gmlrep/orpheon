@@ -170,7 +170,14 @@ jobs:
 
       - name: Prepare vendored libVLC
         shell: pwsh
-        run: .\scripts\ci-prepare-vlc.ps1
+        run: |
+          .\scripts\ci-prepare-vlc.ps1
+          # Stage under src-tauri before tauri:build so bundle.resources paths exist
+          # (beforeBundleCommand also stages; this makes CI fail early if vendor is incomplete).
+          .\scripts\stage-vlc-for-bundle.ps1
+          if (-not (Test-Path src-tauri\vlc-runtime\libvlc.dll)) {
+            throw "vlc-runtime staging failed"
+          }
 
       - name: Build frontend
         run: npm run build
@@ -180,28 +187,7 @@ jobs:
 
       - name: Verify installers include libVLC
         shell: pwsh
-        run: |
-          # Ignore target/release/libvlc.dll from build.rs — only check installer package trees.
-          $bundleRoot = "src-tauri\target\release\bundle"
-          if (-not (Test-Path $bundleRoot)) { throw "bundle output missing: $bundleRoot" }
-          $refs = @()
-          $refs += Get-ChildItem -Recurse $bundleRoot -Include *.nsi,*.wxs,*.wixproj,*.xml -ErrorAction SilentlyContinue |
-            Select-String -Pattern "libvlc\.dll" -SimpleMatch:$false -ErrorAction SilentlyContinue
-          $dlls = Get-ChildItem -Recurse $bundleRoot -Filter libvlc.dll -ErrorAction SilentlyContinue
-          if (($refs.Count -eq 0) -and ($dlls.Count -eq 0)) {
-            Write-Host "Bundle tree (first 100 paths):"
-            Get-ChildItem -Recurse $bundleRoot -ErrorAction SilentlyContinue |
-              Select-Object -First 100 -ExpandProperty FullName
-            throw "Installer bundle has no libvlc.dll (and no NSIS/WiX reference) — VLC core would be missing after install"
-          }
-          if ($dlls.Count -gt 0) {
-            Write-Host "libvlc.dll in bundle:"
-            $dlls | ForEach-Object { $_.FullName }
-          }
-          if ($refs.Count -gt 0) {
-            Write-Host "libvlc.dll referenced in installer sources:"
-            $refs | Select-Object -First 20 | ForEach-Object { "$($_.Path):$($_.LineNumber): $($_.Line.Trim())" }
-          }
+        run: .\scripts\verify-installer-vlc.ps1
 
       - name: Bundle portable Windows package
         shell: pwsh

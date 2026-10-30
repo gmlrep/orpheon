@@ -1,19 +1,28 @@
 <script setup lang="ts">
 const model = defineModel<string>({ default: "" });
 
-const { label, placeholder } = defineProps<{
+const {
+  label,
+  placeholder,
+  disabled = false,
+  grow = false,
+} = defineProps<{
   label?: string;
   placeholder?: string;
+  disabled?: boolean;
+  grow?: boolean;
 }>();
 </script>
 
 <template>
   <input
     class="settings-field"
+    :class="{ grow }"
     type="text"
     :value="model"
     :placeholder="placeholder"
     :aria-label="label"
+    :disabled="disabled"
     @input="model = ($event.target as HTMLInputElement).value"
     @change="model = ($event.target as HTMLInputElement).value"
   />
@@ -29,5 +38,15 @@ const { label, placeholder } = defineProps<{
   border: 1px solid var(--border);
   background: var(--raised);
   color: var(--text);
+}
+.settings-field.grow {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  width: 100%;
+}
+.settings-field:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 </style>

@@ -67,8 +67,20 @@ export interface AppSettings {
   resume_playback: boolean;
   language: string;
   vlc_options: string[];
+  /** First-run library folder onboarding completed or skipped. */
+  onboarding_done?: boolean;
   /** VLC-aligned Tools → Preferences bag (see Rust `Prefs`). */
   prefs: Record<string, string | number | boolean | null | undefined>;
+}
+
+export interface MediaFolderHint {
+  path: string;
+  valid: boolean;
+}
+
+export interface DefaultMediaFolders {
+  music: MediaFolderHint | null;
+  videos: MediaFolderHint | null;
 }
 
 export interface PlaybackTick {

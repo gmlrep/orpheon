@@ -1,5 +1,20 @@
 /* Shell chrome — ported from .taste-skill mockup (product only) */
 
+html[data-popup],
+html[data-popup] body,
+html[data-popup] #app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--surface);
+}
+html[data-popup="context"],
+html[data-popup="context"] body,
+html[data-popup="context"] #app {
+  background: var(--raised);
+}
+
 .app-window {
   width: 100%;
   height: 100%;

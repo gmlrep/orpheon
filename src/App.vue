@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { onMounted, watch } from "vue";
+import { onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import TopBar from "./components/TopBar.vue";
 import Sidebar from "./components/Sidebar.vue";
 import PhoneTabs from "./components/PhoneTabs.vue";
+import OnboardingModal from "./components/OnboardingModal.vue";
 import { useUiStore } from "./stores/ui";
 import { usePlaybackStore } from "./stores/playback";
 import { useSettingsStore } from "./stores/settings";
 import { useAppHotkeys } from "./composables/useAppHotkeys";
+import { useAppMenus } from "./composables/useAppMenus";
 import { useFullscreen } from "./composables/useFullscreen";
 import { useWindowPrefs } from "./composables/useWindowPrefs";
 import { setLocale } from "./i18n";
@@ -15,11 +17,13 @@ import { setLocale } from "./i18n";
 const ui = useUiStore();
 const playback = usePlaybackStore();
 const settings = useSettingsStore();
-const { route, sidebarMode, fullscreen } = storeToRefs(ui);
+const { route, sidebarMode, fullscreen, notice } = storeToRefs(ui);
 const { syncFromOs } = useFullscreen();
+const showOnboarding = ref(false);
 
 useAppHotkeys();
 useWindowPrefs();
+useAppMenus().installListeners();
 
 const keepAliveIncludes = ["HomeView", "LibraryView", "PlaylistsView", "RecentView"];
 
@@ -33,6 +37,7 @@ onMounted(async () => {
   setLocale(lang === "system" ? navigator.language : lang);
   await playback.bootstrap();
   await syncFromOs();
+  showOnboarding.value = !settings.settings.onboarding_done;
 });
 </script>
 
@@ -57,5 +62,27 @@ onMounted(async () => {
       </main>
     </div>
     <PhoneTabs v-if="!fullscreen" />
+    <div v-if="notice" class="app-notice" role="status">{{ notice }}</div>
+    <OnboardingModal v-if="showOnboarding" @done="showOnboarding = false" />
   </div>
 </template>
+
+<style scoped>
+.app-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  z-index: 200;
+  transform: translateX(-50%);
+  max-width: min(480px, calc(100vw - 32px));
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--raised) 96%, transparent);
+  box-shadow: var(--shadow-float);
+  color: var(--text);
+  font-size: 13px;
+  text-align: center;
+  pointer-events: none;
+}
+</style>

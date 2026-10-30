@@ -1,6 +1,7 @@
 <script setup lang="ts">
-const { label } = defineProps<{
+const { label, disabled = false } = defineProps<{
   label?: string;
+  disabled?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -9,7 +10,13 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <button type="button" class="ghost-btn" :aria-label="label" @click="emit('click')">
+  <button
+    type="button"
+    class="ghost-btn"
+    :aria-label="label"
+    :disabled="disabled"
+    @click="emit('click')"
+  >
     <slot />
   </button>
 </template>
@@ -24,7 +31,11 @@ const emit = defineEmits<{
   font-size: 12px;
   border: 1px solid var(--border);
 }
-.ghost-btn:hover {
+.ghost-btn:hover:not(:disabled) {
   color: var(--text);
+}
+.ghost-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

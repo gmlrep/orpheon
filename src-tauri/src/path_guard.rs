@@ -19,6 +19,8 @@ pub fn assert_playable_path(state: &AppState, path: &str) -> Result<PathBuf, Com
     let canon = raw
         .canonicalize()
         .map_err(|_| CommandError::msg(format!("media path not found: {path}")))?;
+    // Windows canonicalize() yields `\\?\…`; strip before play/DB compares.
+    let canon = strip_verbatim_prefix(canon);
     if !canon.is_file() {
         return Err(CommandError::msg("media path is not a file"));
     }
@@ -58,9 +60,55 @@ fn under_scan_root(db: &LibraryDb, canon: &Path) -> Result<bool, CommandError> {
             }
             continue;
         };
+        let root_canon = strip_verbatim_prefix(root_canon);
         if canon.starts_with(&root_canon) {
             return Ok(true);
         }
     }
     Ok(false)
+}
+
+/// Drop Windows `\\?\` / `\\?\UNC\` prefixes from [`std::fs::canonicalize`] results.
+fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let s = path.to_string_lossy();
+        if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+            return PathBuf::from(format!(r"\\{rest}"));
+        }
+        if let Some(rest) = s.strip_prefix(r"\\?\") {
+            return PathBuf::from(rest);
+        }
+    }
+    path
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_verbatim_prefix;
+    use std::path::PathBuf;
+
+    #[test]
+    fn strip_verbatim_drive_prefix() {
+        let p = PathBuf::from(r"\\?\D:\ai-music\track.mp3");
+        assert_eq!(
+            strip_verbatim_prefix(p),
+            PathBuf::from(r"D:\ai-music\track.mp3")
+        );
+    }
+
+    #[test]
+    fn strip_verbatim_unc_prefix() {
+        let p = PathBuf::from(r"\\?\UNC\server\share\a.mp4");
+        assert_eq!(
+            strip_verbatim_prefix(p),
+            PathBuf::from(r"\\server\share\a.mp4")
+        );
+    }
+
+    #[test]
+    fn leave_normal_path() {
+        let p = PathBuf::from(r"D:\ai-music\track.mp3");
+        assert_eq!(strip_verbatim_prefix(p.clone()), p);
+    }
 }

@@ -2063,7 +2063,7 @@ dependencies = [
 
 [[package]]
 name = "library"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "log",
  "rusqlite",
@@ -2096,7 +2096,7 @@ dependencies = [
 
 [[package]]
 name = "libvlc"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "env_logger",
  "libvlc-sys",
@@ -2105,7 +2105,7 @@ dependencies = [
 
 [[package]]
 name = "libvlc-sys"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libc",
 ]
@@ -2532,7 +2532,7 @@ dependencies = [
 
 [[package]]
 name = "orpheon"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "directories",
@@ -3305,7 +3305,7 @@ dependencies = [
 
 [[package]]
 name = "settings"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "log",
  "rusqlite",

@@ -4,7 +4,6 @@ import { useI18n } from "vue-i18n";
 import { usePlaybackStore } from "../stores/playback";
 import { useCoverSrc } from "../composables/useCoverSrc";
 import AppIcon from "./AppIcon.vue";
-import MediaThumb from "./MediaThumb.vue";
 
 const { t } = useI18n();
 const playback = usePlaybackStore();
@@ -21,15 +20,7 @@ const coverSrc = useCoverSrc(coverPath);
       @click="playback.openPlayer()"
     >
       <span class="thumb">
-        <img v-if="coverSrc" class="thumb-img" :src="coverSrc" alt="" />
-        <MediaThumb
-          v-else
-          :title="session.title"
-          :seed="session.path"
-          :path="session.path"
-          :media-id="session.mediaId"
-          :wide="false"
-        />
+        <img class="thumb-img" :src="coverSrc" alt="" />
         <span class="prog" :style="{ '--p': session.position }"><i /></span>
       </span>
       <span class="meta">

@@ -77,6 +77,19 @@ pub fn play_path(
         });
         let video = is_video.unwrap_or_else(|| looks_like_video(&path));
 
+        // Seed duration from library so the UI is not stuck on "—" until libVLC probes.
+        let seeded_length = {
+            let db = state.lock_library().ok();
+            db.as_ref().and_then(|db| {
+                media_id
+                    .and_then(|id| db.get_media_by_id(id).ok().flatten())
+                    .or_else(|| db.get_media_by_path(&path).ok().flatten())
+                    .and_then(|item| item.duration_ms)
+                    .filter(|ms| *ms > 0)
+            })
+        }
+        .unwrap_or(0);
+
         rebind_hwnd_if_needed(&state, video);
 
         let settings = state.load_settings();
@@ -96,28 +109,31 @@ pub fn play_path(
         });
 
         // Defer resume until length is known (poller applies pending_seek).
+        // Audio always starts from the beginning — never resume / offer.
         if let Ok(mut pending) = state.lock_pending_seek() {
             *pending = None;
         }
         let mut resume_offer = None;
-        let saved_pos = if crate::prefs_apply::should_auto_resume(&settings)
-            || crate::prefs_apply::should_ask_resume(&settings)
-        {
-            state
-                .lock_settings()
-                .ok()
-                .and_then(|store| store.load_resume_positions().ok())
-                .and_then(|map| map.get(&path).map(|(pos, _)| pos.clamp(0.02, 0.98)))
-        } else {
-            None
-        };
-        if let Some(pos) = saved_pos {
-            if crate::prefs_apply::should_auto_resume(&settings) {
-                if let Ok(mut pending) = state.lock_pending_seek() {
-                    *pending = Some(pos);
+        if video {
+            let saved_pos = if crate::prefs_apply::should_auto_resume(&settings)
+                || crate::prefs_apply::should_ask_resume(&settings)
+            {
+                state
+                    .lock_settings()
+                    .ok()
+                    .and_then(|store| store.load_resume_positions().ok())
+                    .and_then(|map| map.get(&path).map(|(pos, _)| pos.clamp(0.02, 0.98)))
+            } else {
+                None
+            };
+            if let Some(pos) = saved_pos {
+                if crate::prefs_apply::should_auto_resume(&settings) {
+                    if let Ok(mut pending) = state.lock_pending_seek() {
+                        *pending = Some(pos);
+                    }
+                } else if crate::prefs_apply::should_ask_resume(&settings) {
+                    resume_offer = Some(pos);
                 }
-            } else if crate::prefs_apply::should_ask_resume(&settings) {
-                resume_offer = Some(pos);
             }
         }
 
@@ -136,7 +152,7 @@ pub fn play_path(
             is_video: video,
             position: 0.0,
             time_ms: 0,
-            length_ms: 0,
+            length_ms: seeded_length,
             volume,
             artwork_url: None,
             resume_offer,
@@ -451,7 +467,8 @@ pub(crate) fn persist_resume(state: &AppState) {
         let Ok(s) = state.lock_session() else {
             return;
         };
-        if !s.active || s.path.is_empty() {
+        // Continue watching is video-only; audio always restarts from 0.
+        if !s.active || s.path.is_empty() || !s.is_video {
             return;
         }
         (s.path.clone(), s.position, s.time_ms)

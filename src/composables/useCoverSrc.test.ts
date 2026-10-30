@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { ref } from "vue";
-import { resolveMediaSrc, useCoverSrc } from "./useCoverSrc";
+import { DEFAULT_COVER_SRC } from "../assets/defaultCover";
+import { resolveCoverSrc, resolveMediaSrc, useCoverSrc } from "./useCoverSrc";
 
 describe("useCoverSrc", () => {
-  it("returns null when path is missing", () => {
+  it("falls back to default cover when path is missing", () => {
     const path = ref<string | null>(null);
     const src = useCoverSrc(path);
-    expect(src.value).toBeNull();
+    expect(src.value).toBe(DEFAULT_COVER_SRC);
+    expect(resolveCoverSrc(null)).toBe(DEFAULT_COVER_SRC);
+    expect(resolveMediaSrc(null)).toBeNull();
   });
 
   it("normalizes backslashes and converts via convertFileSrc", () => {
@@ -20,5 +23,6 @@ describe("useCoverSrc", () => {
     expect(resolveMediaSrc("http://station/logo.jpg")).toBe("http://station/logo.jpg");
     expect(resolveMediaSrc("data:image/png;base64,xx")).toBeNull();
     expect(resolveMediaSrc("file:///C:/a.png")).toBeNull();
+    expect(resolveCoverSrc("data:image/png;base64,xx")).toBe(DEFAULT_COVER_SRC);
   });
 });
