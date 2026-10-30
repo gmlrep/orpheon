@@ -56,7 +56,7 @@ jobs:
             $exe.Directory.FullName
           }
 
-          foreach ($f in @("COPYING.txt", "AUTHORS.txt", "THANKS.txt")) {
+          foreach ($f in @("COPYING.txt", "COPYING.LGPLv2.1")) {
             $src = Join-Path "vendor\vlc" $f
             if (Test-Path $src) { Copy-Item $src $portableSrc -Force }
           }
